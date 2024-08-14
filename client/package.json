@@ -1,0 +1,6 @@
+{
+  "main": "index.html",
+  "dependencies": {
+    "three": "^0.167.1"
+  }
+}

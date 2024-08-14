@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="styles/main.css">
   </head>
   <body>
+    <div id="container"></div>
+    <canvas></canvas>
     <div class="controls-wrapper">
         <ul id="events"></ul>
         <div class="controls">
@@ -19,7 +21,16 @@
             </div>
         </div>
     </div>
+
+   <script type="importmap">
+    {
+      "imports": {
+        "three": "./node_modules/three/build/three.module.js",
+        "three/addons/": "./node_modules/three/examples/jsm/"
+      }
+    }
+   </script> 
   <script src="/socket.io/socket.io.js"></script>
-	<script src="src/client.js"></script>
+	<script type="module" src="src/client.js"></script>
   </body>
 </html>
