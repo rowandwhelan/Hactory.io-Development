@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import Stats from 'three/addons/libs/stats.module.js'
+import { FirstPersonControls } from './firstpersoncontrols.js'
 
 //Canvas
 
@@ -40,6 +41,8 @@ scene.add( cube );
 
 camera.position.z = 5;
 
+const fps = new FirstPersonControls(camera, canvas )
+
 /**
  * Animation Loop
  */
@@ -58,6 +61,7 @@ const tick = () => {
     cube.rotation.x += 0.01;
     cube.rotation.y += 0.02;
 
+    fps.update(deltaTime)
     renderer.render(scene, camera)
     stats.update()
   }
@@ -78,13 +82,13 @@ const onChatSubmitted = (sock) => (e) => {
     const input = document.querySelector('#chat')
     const text = input.value
     input.value = ''
-
+    //sends to server
     sock.emit('message', text)
 }
 
 (() => {
     const sock = io()
-
+    //recives from server
     sock.on('message', (text) => {
         log(text)
     })
