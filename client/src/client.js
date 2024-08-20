@@ -9,8 +9,12 @@ const canvas = document.querySelector('canvas')
 //Scene
 const scene = new THREE.Scene()
 
-//Camera
-let camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 5000)
+var camera = new THREE.PerspectiveCamera(
+    90,                                   // Field of view
+    window.innerWidth / window.innerHeight, // Aspect ratio
+    0.1,                                  // Near clipping pane
+    1000                                  // Far clipping pane
+);
 
 /**
  * Renderer
@@ -18,7 +22,7 @@ let camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHei
 const renderer = new THREE.WebGLRenderer({
     canvas: canvas,
     antialias: true
-  })
+})
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
 renderer.setSize(window.innerWidth, window.innerHeight)
@@ -34,14 +38,114 @@ stats.domElement.style.position = 'absolute'
 stats.domElement.style.top = '0px'
 container.appendChild(stats.domElement)
 
-const geometry = new THREE.BoxGeometry( 1, 1, 1 );
-const material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
-const cube = new THREE.Mesh( geometry, material );
-scene.add( cube );
+/**
+ * Lighting
+ */
+//Ambient Light
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.7)
+scene.add(ambientLight)
 
-camera.position.z = 5;
+//Directional Light
+const directionalLight = new THREE.DirectionalLight(0xFFFFFF, 0.8)
+directionalLight.castShadow = true
+directionalLight.shadow.mapSize.set(1024, 1024)
+directionalLight.shadow.camera.far = 50
+const dLightSize = 200
+directionalLight.shadow.camera.left = - dLightSize
+directionalLight.shadow.camera.top = dLightSize
+directionalLight.shadow.camera.right = dLightSize
+directionalLight.shadow.camera.bottom = - dLightSize
+directionalLight.position.set(-5, 15, 10)
+scene.add(directionalLight)
 
-const fps = new FirstPersonControls(camera, canvas )
+//Fog or FogExp2 [fog grows exponetially] (color, near limit, far limit)
+scene.fog = new THREE.Fog(0xFFFFFF, 400, 600)
+
+
+/**
+ * Event Listeners
+ */
+
+window.addEventListener('resize', () => {
+
+    // Update camera
+    camera.aspect = window.innerWidth / window.innerHeight
+    camera.updateProjectionMatrix()
+
+    // Update renderer
+    renderer.setSize(window.innerWidth, window.innerHeight)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.render(scene, camera)
+})
+
+window.addEventListener('click', (event) => {
+    //if (!controls.enabled) {
+    //return
+    //}
+    document.body.requestPointerLock();
+})
+
+
+
+// Reposition the camera
+camera.position.set(Math.random() * 10, Math.random() * 10, Math.random() * 10);
+
+const geometry = new THREE.BoxGeometry(1, 1, 1);
+const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+const cube = new THREE.Mesh(geometry, material);
+scene.add(cube);
+
+// A mesh is created from the geometry and material, then added to the scene
+var plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(500, 500, 500, 500),
+    new THREE.MeshBasicMaterial({ color: 0x222222, wireframe: true })
+);
+plane.rotateX(Math.PI / 2);
+scene.add(plane);
+
+const playerGeo = new THREE.BoxGeometry(0.5, 1, 0.5);
+const playerMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+const playerBody = new THREE.Mesh(geometry, material);
+scene.add(playerBody);
+
+const controls = new FirstPersonControls(camera)
+controls.enabled = true
+
+
+/**
+ * Players
+ */
+const players = {}
+const playerEntities = {}
+const updatePlayers = (playerUpdate, add) => {
+    if (add) {
+        Object.assign(players, playerUpdate)
+        for (const player in playerUpdate) {
+            const newPlayerGeo = new THREE.BoxGeometry(0.5, 1, 0.5);
+            const newPlayerMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            const newPlayer = new THREE.Mesh(newPlayerGeo, newPlayerMat);
+            newPlayer.name = player
+            console.log(playerUpdate[player].position)
+            const playerPosition = playerUpdate[player].position
+            newPlayer.position.set(playerPosition.x, playerPosition.y, playerPosition.z)
+            scene.add(newPlayer);
+            console.log(newPlayer)
+            Object.assign(playerEntities, { [player]: newPlayer })
+            console.log(`Players: ${JSON.stringify(players)}`)
+            console.log(`Player Entities: ${JSON.stringify(playerEntities)}`)
+        }
+    } else if (!add) {
+        delete players[playerUpdate]
+        for (const playerEntity in playerEntities) {
+            if (playerEntity == playerUpdate) {
+                scene.remove(playerEntities[playerEntity])
+                delete playerEntities[playerEntity]
+            }
+        }
+    } else {
+        console.error('updatePlayers() encountered an error')
+    }
+}
 
 /**
  * Animation Loop
@@ -61,11 +165,16 @@ const tick = () => {
     cube.rotation.x += 0.01;
     cube.rotation.y += 0.02;
 
-    fps.update(deltaTime)
+    for (const player in playerEntities) {
+        //const playerName = playerEntities[player].name
+        //playerEntities[player].position.set(players[playerName].position)
+    }
+
+    controls.update(deltaTime)
     renderer.render(scene, camera)
     stats.update()
-  }
-  tick()
+}
+tick()
 
 const log = (text) => {
     const parent = document.querySelector('#events')
@@ -86,6 +195,16 @@ const onChatSubmitted = (sock) => (e) => {
     sock.emit('message', text)
 }
 
+const sendPlayerData = (sock) => {
+
+    const username = camera.uuid
+    const playerData = {}
+    playerData.position = camera.position
+    const player = { [username]: playerData }
+    console.log(player)
+    sock.emit('playerData', (player))
+}
+
 (() => {
     const sock = io()
     //recives from server
@@ -93,7 +212,19 @@ const onChatSubmitted = (sock) => (e) => {
         log(text)
     })
 
+    //Receives an object with one or more players sent from the server
+    sock.on('receivePlayerData', (playerUpdate) => {
+        updatePlayers(playerUpdate, true)
+        console.log(`New player: ${JSON.stringify(playerUpdate)}`)
+    })
+
+    sock.on('removePlayer', (playerUpdate) => {
+        updatePlayers(playerUpdate, false)
+        console.log(`Player removed: ${JSON.stringify(playerUpdate)}`)
+    })
+
     document.querySelector('#chat-form').addEventListener('submit', onChatSubmitted(sock))
+    sendPlayerData(sock)
 })()
 
 
