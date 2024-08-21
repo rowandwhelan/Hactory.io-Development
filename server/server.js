@@ -17,8 +17,7 @@ io.on('connection', (sock) => {
 
     //Updates player info when it is received and sends it to all players, adds new player's data to the list
     sock.on('playerData', (playerUpdate) => {
-        console.log(`${Object.keys(playerUpdate)} joined the game`)
-        
+               
         updatePlayers(playerUpdate)
         for(const player in playerUpdate){
             Object.assign(activePlayers, {[player]:sock.id})

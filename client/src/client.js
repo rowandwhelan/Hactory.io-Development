@@ -2,6 +2,9 @@ import * as THREE from 'three'
 import Stats from 'three/addons/libs/stats.module.js'
 import { FirstPersonControls } from './firstpersoncontrols.js'
 
+
+let sock
+
 //Canvas
 
 const canvas = document.querySelector('canvas')
@@ -103,11 +106,6 @@ var plane = new THREE.Mesh(
 plane.rotateX(Math.PI / 2);
 scene.add(plane);
 
-const playerGeo = new THREE.BoxGeometry(0.5, 1, 0.5);
-const playerMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-const playerBody = new THREE.Mesh(geometry, material);
-scene.add(playerBody);
-
 const controls = new FirstPersonControls(camera)
 controls.enabled = true
 
@@ -118,21 +116,33 @@ controls.enabled = true
 const players = {}
 const playerEntities = {}
 const updatePlayers = (playerUpdate, add) => {
+    //console.log(playerEntities)
+    //console.log(players)
     if (add) {
-        Object.assign(players, playerUpdate)
         for (const player in playerUpdate) {
-            const newPlayerGeo = new THREE.BoxGeometry(0.5, 1, 0.5);
+            let playerInGame = false
+            for (const playerEntity in playerEntities) {
+                //console.log(playerEntities[playerEntity].position)
+                if (playerEntity == player) {
+                    playerInGame = true
+                    playerEntities[playerEntity].position.set(playerUpdate[player].position.x, playerUpdate[player].position.y, playerUpdate[player].position.z)
+                }
+            }
+            Object.assign(players, playerUpdate)
+            if (!playerInGame){
+            const newPlayerGeo = new THREE.BoxGeometry(0.5, Math.random(), 0.5);
             const newPlayerMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
             const newPlayer = new THREE.Mesh(newPlayerGeo, newPlayerMat);
             newPlayer.name = player
-            console.log(playerUpdate[player].position)
+            //console.log(playerUpdate[player].position)
             const playerPosition = playerUpdate[player].position
             newPlayer.position.set(playerPosition.x, playerPosition.y, playerPosition.z)
             scene.add(newPlayer);
-            console.log(newPlayer)
+            //console.log(newPlayer)
             Object.assign(playerEntities, { [player]: newPlayer })
-            console.log(`Players: ${JSON.stringify(players)}`)
-            console.log(`Player Entities: ${JSON.stringify(playerEntities)}`)
+            //console.log(`Players: ${JSON.stringify(players)}`)
+            //console.log(`Player Entities: ${JSON.stringify(playerEntities)}`)
+        }
         }
     } else if (!add) {
         delete players[playerUpdate]
@@ -147,34 +157,7 @@ const updatePlayers = (playerUpdate, add) => {
     }
 }
 
-/**
- * Animation Loop
- */
-//Current Time
-let time = Date.now()
 
-//animation
-const tick = () => {
-    window.requestAnimationFrame(tick)
-
-    const currentTime = Date.now()
-    const deltaTime = currentTime - time
-    time = currentTime
-    //delta time is miliseconds per frame
-
-    cube.rotation.x += 0.01;
-    cube.rotation.y += 0.02;
-
-    for (const player in playerEntities) {
-        //const playerName = playerEntities[player].name
-        //playerEntities[player].position.set(players[playerName].position)
-    }
-
-    controls.update(deltaTime)
-    renderer.render(scene, camera)
-    stats.update()
-}
-tick()
 
 const log = (text) => {
     const parent = document.querySelector('#events')
@@ -201,12 +184,12 @@ const sendPlayerData = (sock) => {
     const playerData = {}
     playerData.position = camera.position
     const player = { [username]: playerData }
-    console.log(player)
+    //console.log(player)
     sock.emit('playerData', (player))
 }
 
 (() => {
-    const sock = io()
+    sock = io()
     //recives from server
     sock.on('message', (text) => {
         log(text)
@@ -215,12 +198,12 @@ const sendPlayerData = (sock) => {
     //Receives an object with one or more players sent from the server
     sock.on('receivePlayerData', (playerUpdate) => {
         updatePlayers(playerUpdate, true)
-        console.log(`New player: ${JSON.stringify(playerUpdate)}`)
+        //console.log(`New player: ${JSON.stringify(playerUpdate)}`)
     })
 
     sock.on('removePlayer', (playerUpdate) => {
         updatePlayers(playerUpdate, false)
-        console.log(`Player removed: ${JSON.stringify(playerUpdate)}`)
+        //console.log(`Player removed: ${JSON.stringify(playerUpdate)}`)
     })
 
     document.querySelector('#chat-form').addEventListener('submit', onChatSubmitted(sock))
@@ -228,3 +211,27 @@ const sendPlayerData = (sock) => {
 })()
 
 
+/**
+ * Animation Loop
+ */
+//Current Time
+let time = Date.now()
+
+//animation
+const tick = () => {
+    window.requestAnimationFrame(tick)
+
+    const currentTime = Date.now()
+    const deltaTime = currentTime - time
+    time = currentTime
+    //delta time is miliseconds per frame
+
+    cube.rotation.x += 0.01;
+    cube.rotation.y += 0.02;
+
+    controls.update(deltaTime)
+    sendPlayerData(sock)
+    renderer.render(scene, camera)
+    stats.update()
+}
+tick()

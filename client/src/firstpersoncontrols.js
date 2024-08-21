@@ -16,7 +16,6 @@ class FirstPersonControls extends THREE.EventDispatcher {
 
         this.enabled = false
 
-
         this.camera = camera
         this.cameraEuler = new THREE.Euler(0, 0, 0, 'YXZ')
 
@@ -30,7 +29,11 @@ class FirstPersonControls extends THREE.EventDispatcher {
         this.canJump = false
 
         this.inputVelocity = new THREE.Vector3()
+        this.velocity = new THREE.Vector3(0,0,0)
+        this.velocityFactor = 0.0005
         this.euler = new THREE.Euler()
+
+        this.velocityCutoff = 0.00001
 
         this.lockEvent = { type: 'lock' }
         this.unlockEvent = { type: 'unlock' }
@@ -156,6 +159,16 @@ class FirstPersonControls extends THREE.EventDispatcher {
         return this.camera
     }
 
+    isMoving() {
+        if (this.velocity != (0,0,0)){
+            return true
+        } else if (this.velocity == (0,0,0)) {
+            return false
+        } else {
+            console.error("Error in player position")
+        }
+    }
+
     getDirection() {
         const vector = new THREE.Vector3(0, 0, -1)
         vector.applyQuaternion(this.quaternion)
@@ -186,12 +199,28 @@ class FirstPersonControls extends THREE.EventDispatcher {
         // Convert velocity to world coordinates
         this.quaternion.setFromEuler(this.cameraEuler)
         this.inputVelocity.applyQuaternion(this.quaternion)
-
+        //console.log(this.inputVelocity)
         // Add to the object
-        //this.velocity.x += this.inputVelocity.x
-        //this.velocity.z += this.inputVelocity.z
+        this.velocity.x += this.inputVelocity.x
+        this.velocity.z += this.inputVelocity.z
+        //console.log(this.camera.position)
 
-        //this.camera.position.copy(this.playerBody.position)
+        if ((this.velocity.x < this.velocityCutoff) && (this.velocity.x > -this.velocityCutoff)) {
+            this.velocity.x = 0
+        }
+        if ((this.velocity.z < this.velocityCutoff) && (this.velocity.z > -this.velocityCutoff)) {
+            this.velocity.z = 0
+        }
+        if ((this.velocity.y < this.velocityCutoff) && (this.velocity.y > -this.velocityCutoff)) {
+            this.velocity.y = 0
+        }
+
+        this.camera.position.x += this.velocity.x
+        this.camera.position.z += this.velocity.z
+
+        this.velocity.multiplyScalar(0.99)
+
+        //console.log(this.camera.position)
     }
 }
 
