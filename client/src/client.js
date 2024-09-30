@@ -94,7 +94,7 @@ window.addEventListener('click', (event) => {
 camera.position.set(Math.random() * 10, Math.random() * 10, Math.random() * 10);
 
 const geometry = new THREE.BoxGeometry(1, 1, 1);
-const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
 const cube = new THREE.Mesh(geometry, material);
 scene.add(cube);
 
@@ -129,20 +129,23 @@ const updatePlayers = (playerUpdate, add) => {
                 }
             }
             Object.assign(players, playerUpdate)
-            if (!playerInGame){
-            const newPlayerGeo = new THREE.BoxGeometry(0.5, Math.random(), 0.5);
-            const newPlayerMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-            const newPlayer = new THREE.Mesh(newPlayerGeo, newPlayerMat);
-            newPlayer.name = player
-            //console.log(playerUpdate[player].position)
-            const playerPosition = playerUpdate[player].position
-            newPlayer.position.set(playerPosition.x, playerPosition.y, playerPosition.z)
-            scene.add(newPlayer);
-            //console.log(newPlayer)
-            Object.assign(playerEntities, { [player]: newPlayer })
-            //console.log(`Players: ${JSON.stringify(players)}`)
-            //console.log(`Player Entities: ${JSON.stringify(playerEntities)}`)
-        }
+            if (!playerInGame) {
+                const newPlayerGeo = new THREE.BoxGeometry(0.5, Math.random(), 0.5);
+                const newPlayerMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                const newPlayer = new THREE.Mesh(newPlayerGeo, newPlayerMat);
+                newPlayer.name = player
+                if (player == camera.uuid) {
+                    newPlayer.visible = false
+                }
+                //console.log(playerUpdate[player].position)
+                const playerPosition = playerUpdate[player].position
+                newPlayer.position.set(playerPosition.x, playerPosition.y, playerPosition.z)
+                scene.add(newPlayer);
+                //console.log(newPlayer)
+                Object.assign(playerEntities, { [player]: newPlayer })
+                //console.log(`Players: ${JSON.stringify(players)}`)
+                //console.log(`Player Entities: ${JSON.stringify(playerEntities)}`)
+            }
         }
     } else if (!add) {
         delete players[playerUpdate]
@@ -155,6 +158,60 @@ const updatePlayers = (playerUpdate, add) => {
     } else {
         console.error('updatePlayers() encountered an error')
     }
+}
+
+let seed
+
+const chunks = {}
+const chunkEntities = {}
+let blockCounts = []
+
+//Store blocks as chunks, update them as chunks. Group chunk data to create instanced meshes for each block type
+
+const updateWorld = (worldUpdate) => {
+
+    for (const chunk in worldUpdate) {
+        const chunkView = new DataView(worldUpdate[chunk])
+        let block = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x00ff00 }))
+        let instancedMesh = new THREE.InstancedMesh(block.geometry, block.material, chunkView.byteLength)
+
+        for (let x = 0, i = 0; x < 16; x++) {
+            for (let y = 0; y < 16; y++) {
+                for (let z = 0; z < 16; z++) {
+                    //if (chunkView.getUint8(i)) continue
+
+                    block.position.set(x, y, z);
+
+                    block.updateMatrix();
+
+                    instancedMesh.setMatrixAt(i, block.matrix);
+
+                    instancedMesh.setColorAt(i, new THREE.Color(`hsl(${Math.random() * 360}, 50%, 66%)`));
+
+                    i++
+                }
+            }
+        }
+
+        scene.add(instancedMesh)
+        const chunkPosition = chunk.split(',')
+        instancedMesh.position.set(parseInt(chunkPosition[0]) * 16, parseInt(chunkPosition[1]) * 16, parseInt(chunkPosition[2]) * 16)
+        Object.assign(chunkEntities, { [chunk]: instancedMesh })
+    }
+}
+
+const loadWorld = (chunk) => {
+    const chunkPosition = chunk.split(',')
+
+    let newChunk = new ArrayBuffer(4096)
+
+    let chunkView = new DataView(newChunk)
+    for (let i = 0; i < chunkView.byteLength; i++) {
+        const block = Math.random() * 4
+        chunkView.setUint8(i, block)
+    }
+    Object.assign(chunks, { [chunk]: newChunk })
+    updateWorld({ [chunk]: newChunk })
 }
 
 
@@ -188,6 +245,106 @@ const sendPlayerData = (sock) => {
     sock.emit('playerData', (player))
 }
 
+const sendWorldData = (worldData) => {
+    console.log('worldData', worldData)
+    sock.emit('worldData', (worldData))
+}
+
+
+document.addEventListener('mousemove', onMouseMove)
+document.addEventListener('mousedown', onMouseDown)
+
+//Placeholder block
+//const placeholderGeo = new THREE.BoxGeometry(1, 1, 1)
+//let placeholderMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.5, transparent: true })
+//let placeholderMesh = new THREE.Mesh(placeholderGeo, placeholderMaterial)
+//scene.add(placeholderMesh)
+
+const raycaster = new THREE.Raycaster()
+const mouse = new THREE.Vector2(0, 0)
+
+function onMouseMove(event) {
+
+    raycaster.setFromCamera(mouse, camera)
+
+    // //the line below tanks the fps for some reason lol
+    // const intersects = raycaster.intersectObjects(scene.children, false)
+
+    // if (intersects.length > 0) {
+
+    //     const intersect = intersects[0]
+
+    //     //Moves placeholder mesh
+    //     placeholderMesh.position.copy(intersect.point).add(intersect.face.normal)
+    // }
+}
+
+function onMouseDown(event) {
+
+    raycaster.setFromCamera(mouse, camera)
+    const intersects = raycaster.intersectObjects(scene.children, true)
+
+    if (intersects.length > 0) {
+
+        const intersect = intersects[0]
+
+        // delete cube
+        if (event.button == 2) {
+            let chunkCoordX = 0
+            let chunkCoordY = 0
+            let chunkCoordZ = 0
+            let x
+            let y
+            let z
+            if (intersect.object.position.x >= 0) {
+                for (x = intersect.object.position.x; x > 16; x -= 16) {
+                    chunkCoordX++
+                    console.log(chunkCoordX, chunkCoordY, chunkCoordZ, x, y, z)
+                }
+            } else if (intersect.object.position.x < 0) {
+                for (x = intersect.object.position.x; x < 0; x += 16) {
+                    chunkCoordX--
+                    console.log(chunkCoordX, chunkCoordY, chunkCoordZ, x, y, z)
+                }
+            }
+
+            if (intersect.object.position.y >= 0) {
+                for (y = intersect.object.position.y; y > 16; y -= 16) {
+                    chunkCoordY++
+                    console.log(chunkCoordX, chunkCoordY, chunkCoordZ, x, y, z)
+                }
+            } else if (intersect.object.position.y < 0) {
+                for (y = intersect.object.position.y; y < 0; y += 16) {
+                    chunkCoordY--
+                    console.log(chunkCoordX, chunkCoordY, chunkCoordZ, x, y, z)
+                }
+            }
+
+            if (intersect.object.position.z >= 0) {
+                for (z = intersect.object.position.z; z > 16; z -= 16) {
+                    chunkCoordZ++
+                    console.log(chunkCoordX, chunkCoordY, chunkCoordZ, x, y, z)
+                }
+            } else if (intersect.object.position.z < 0) {
+                for (z = intersect.object.position.z; z < 0; z += 16) {
+                    chunkCoordZ--
+                    console.log(chunkCoordX, chunkCoordY, chunkCoordZ, x, y, z)
+                }
+            }
+            const innerChunkIndex = x + 16 * z + y * 16 * 16
+            const chunkCoordsString = `${chunkCoordX},${chunkCoordY},${chunkCoordZ}`
+            sendWorldData({ [chunkCoordsString]: { [innerChunkIndex]: { 'x': x, 'y': y, 'z': z, 'type': 0, 'config': undefined } } })
+
+            //create cube
+        } else if (event.button == 1) {
+            console.log('added')
+            console.log(intersect)
+        }
+
+    }
+}
+
+
 (() => {
     sock = io()
     //recives from server
@@ -201,6 +358,16 @@ const sendPlayerData = (sock) => {
         //console.log(`New player: ${JSON.stringify(playerUpdate)}`)
     })
 
+    sock.on('receiveWorldData', (worldUpdate) => {
+        console.log(`World Update: ${JSON.stringify(worldUpdate)}`)
+        updateWorld(worldUpdate)
+
+    })
+
+    sock.on('worldSeed', (worldSeed) => {
+        seed = worldSeed
+    })
+
     sock.on('removePlayer', (playerUpdate) => {
         updatePlayers(playerUpdate, false)
         //console.log(`Player removed: ${JSON.stringify(playerUpdate)}`)
@@ -210,6 +377,24 @@ const sendPlayerData = (sock) => {
     sendPlayerData(sock)
 })()
 
+let renderDistance = 8
+const loadNewChunks = () => {
+    let chunkArray = Object.keys(chunks)
+    for (let x = 0, i = 0; x < renderDistance; x++) {
+        for (let y = 0; y < renderDistance; y++) {
+            for (let z = 0; z < renderDistance; z++) {
+
+                if (!chunkArray[i]) {
+                    let chunkString = `${(x/2)-x},${(y/2)-y},${(z/2)-z}`
+                    loadWorld(chunkString)
+                }
+
+            }
+        }
+    }
+
+
+}
 
 /**
  * Animation Loop
@@ -231,6 +416,7 @@ const tick = () => {
 
     controls.update(deltaTime)
     sendPlayerData(sock)
+    loadNewChunks()
     renderer.render(scene, camera)
     stats.update()
 }

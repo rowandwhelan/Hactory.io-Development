@@ -1,0 +1,1 @@
+Player movement forward and backward is cursed when camera is pointed very high up or low down
