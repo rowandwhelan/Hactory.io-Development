@@ -25,6 +25,8 @@ class FirstPersonControls extends THREE.EventDispatcher {
         this.moveBackward = false
         this.moveLeft = false
         this.moveRight = false
+        this.moveUp = false
+        this.moveDown = false
 
         this.canJump = false
 
@@ -37,6 +39,8 @@ class FirstPersonControls extends THREE.EventDispatcher {
 
         this.lockEvent = { type: 'lock' }
         this.unlockEvent = { type: 'unlock' }
+
+        this.spectator = true
 
         this.connect()
     }
@@ -123,11 +127,18 @@ class FirstPersonControls extends THREE.EventDispatcher {
                 break
 
             case 'Space':
-                if (this.canJump) {
+                if (this.spectator){
+                    this.moveUp = true
+                }
+                else if (this.canJump) {
                     this.velocity.y = this.jumpVelocity
                 }
                 this.canJump = false
                 break
+            case 'ShiftLeft':
+                if (this.spectator){
+                    this.moveDown = true
+                }
         }
     }
 
@@ -152,6 +163,15 @@ class FirstPersonControls extends THREE.EventDispatcher {
             case 'ArrowRight':
                 this.moveRight = false
                 break
+            case 'Space':
+                if (this.spectator){
+                    this.moveUp = false
+                }
+                break
+            case 'ShiftLeft':
+                if (this.spectator){
+                    this.moveDown = false
+                }
         }
     }
 
@@ -196,13 +216,26 @@ class FirstPersonControls extends THREE.EventDispatcher {
             this.inputVelocity.x = this.velocityFactor * delta
         }
 
+        if (this.moveUp) {
+            this.inputVelocity.y = this.velocityFactor * delta
+        }
+        if (this.moveDown) {
+            this.inputVelocity.y = -this.velocityFactor * delta
+        }
+
         // Convert velocity to world coordinates
-        this.quaternion.setFromEuler(this.cameraEuler)
+        let camEuler = new THREE.Euler().copy(this.cameraEuler)
+        //console.log(this.cameraEuler)
+        camEuler.x = 0
+        this.quaternion.setFromEuler(camEuler)
+        //console.log(this.cameraEuler)
+        //console.log(this.quaternion)
         this.inputVelocity.applyQuaternion(this.quaternion)
         //console.log(this.inputVelocity)
         // Add to the object
         this.velocity.x += this.inputVelocity.x
         this.velocity.z += this.inputVelocity.z
+        this.velocity.y += this.inputVelocity.y
         //console.log(this.camera.position)
 
         if ((this.velocity.x < this.velocityCutoff) && (this.velocity.x > -this.velocityCutoff)) {
@@ -217,6 +250,7 @@ class FirstPersonControls extends THREE.EventDispatcher {
 
         this.camera.position.x += this.velocity.x
         this.camera.position.z += this.velocity.z
+        this.camera.position.y += this.velocity.y
 
         this.velocity.multiplyScalar(0.99)
 

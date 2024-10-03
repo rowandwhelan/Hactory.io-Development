@@ -65,6 +65,28 @@ scene.add(directionalLight)
 scene.fog = new THREE.Fog(0xFFFFFF, 400, 600)
 
 
+//Direction vectors for debugging
+const origin = new THREE.Vector3( 0, 0, 0 ); 
+const length = 5; 
+
+const dirX = new THREE.Vector3( 1, 0, 0 ); //normalize the direction vector (convert to vector of length 1) 
+dirX.normalize(); 
+const hexX = 0xff0000; 
+const arrowHelperX = new THREE.ArrowHelper( dirX, origin, length, hexX ); 
+
+const dirY = new THREE.Vector3( 0, 1, 0 ); //normalize the direction vector (convert to vector of length 1) 
+dirY.normalize(); 
+const hexY = 0x00ff00; 
+const arrowHelperY = new THREE.ArrowHelper( dirY, origin, length, hexY ); 
+
+const dirZ = new THREE.Vector3( 0, 0, 1 ); //normalize the direction vector (convert to vector of length 1) 
+dirZ.normalize(); 
+const hexZ = 0x0000ff; 
+const arrowHelperZ = new THREE.ArrowHelper( dirZ, origin, length, hexZ ); 
+
+scene.add( arrowHelperX, arrowHelperY, arrowHelperZ);
+
+
 /**
  * Event Listeners
  */
@@ -88,7 +110,8 @@ window.addEventListener('click', (event) => {
     document.body.requestPointerLock();
 })
 
-
+//Chunk Size
+const chunkSize = 32
 
 // Reposition the camera
 camera.position.set(Math.random() * 10, Math.random() * 10, Math.random() * 10);
@@ -167,17 +190,68 @@ const chunkEntities = {}
 let blockCounts = []
 
 //Store blocks as chunks, update them as chunks. Group chunk data to create instanced meshes for each block type
+//Request chunks from server
+//Get an array of blocks per chunk from server
+//Store the block array client side
+//Take the block array and iterate over it, for each block check if there are adjacent blocks and for each side where there is not an adjacent block,
+// place an instanced mesh of a blockface on that side with that configuration
 
-const updateWorld = (worldUpdate) => {
+const topFaceVertices = new Int8Array([/* v0 */ -1, -1, 1, /* v1 */ 1, -1, 1, /* v2 */ 1, 1, 1, /* v3 */ -1, 1, 1]);
+const leftFaceVertices = new Int8Array([/* v0 */ 1, -1, 1, /* v1 */ 1, -1, 1, /* v2 */ 1, 1, 1, /* v3 */ -1, 1, 1]);
+const indices = [0, 1, 2, 2, 3, 0,];
+
+const addFace = (side) => {
+
+    const blockFace = new THREE.BufferGeometry()
+    console.log(blockFace)
+    console.log(side)
+
+    let vertices
+    console.log(vertices)
+
+    if (side == 'topFace'){
+        vertices = new Int8Array([1, 1, -1,    -1, 1, -1,    -1, 1, 1,    1, 1, 1 ]);
+    } else if (side == 'bottomFace'){
+        vertices = new Int8Array([-1, -1, -1,    1, -1, -1,    1, -1, 1,    -1, -1, 1,]);
+    } else if (side == 'leftFace'){
+        vertices = new Int8Array([/* v0 */ -1, -1, 1, /* v1 */ 1, -1, 1, /* v2 */ 1, 1, 1, /* v3 */ -1, 1, 1]);
+    } else if (side == 'rightFace'){
+        vertices = new Int8Array([  /* v1 */ 1, -1, -1, /* v0 */-1, -1, -1, /* v3 */-1, 1, -1,/* v2 */ 1, 1, -1]);
+    } else if (side == 'frontFace'){
+        vertices = new Int8Array([/* v0 */ 1, -1, 1, /* v1 */ 1, -1, -1, /* v2 */ 1, 1, -1, /* v3 */ 1, 1, 1]);
+    } else if (side == 'backFace'){
+        vertices = new Int8Array([/* v0 */  /* v1 */ -1, -1, -1,    -1, -1, 1,    -1, 1, 1,/* v2 */ -1, 1, -1, /* v3 */ ]);
+    } 
+    if (!vertices){return console.log('side undefined')}
+
+    console.log(vertices)
+    const meshMat = new THREE.MeshBasicMaterial({color: new THREE.Color(`hsl(${Math.random() * 360}, 50%, 66%)`)});
+    blockFace.setIndex(indices);
+    console.log(blockFace)
+    blockFace.setAttribute( 'position', new THREE.BufferAttribute( vertices, 3 ) ); 
+    console.log(blockFace)
+    const mesh = new THREE.Mesh(blockFace, meshMat);
+    console.log(mesh)
+    scene.add(mesh)
+}
+
+addFace('frontFace')
+addFace('backFace')
+addFace('leftFace')
+addFace('rightFace')
+addFace('topFace')
+addFace('bottomFace')
+
+const generateChunkMesh = ( worldUpdate) => {
 
     for (const chunk in worldUpdate) {
         const chunkView = new DataView(worldUpdate[chunk])
         let block = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x00ff00 }))
         let instancedMesh = new THREE.InstancedMesh(block.geometry, block.material, chunkView.byteLength)
 
-        for (let x = 0, i = 0; x < 16; x++) {
-            for (let y = 0; y < 16; y++) {
-                for (let z = 0; z < 16; z++) {
+        for (let x = 0, i = 0; x < chunkSize; x++) {
+            for (let y = 0; y < chunkSize; y++) {
+                for (let z = 0; z < chunkSize; z++) {
                     //if (chunkView.getUint8(i)) continue
 
                     block.position.set(x, y, z);
@@ -195,7 +269,7 @@ const updateWorld = (worldUpdate) => {
 
         scene.add(instancedMesh)
         const chunkPosition = chunk.split(',')
-        instancedMesh.position.set(parseInt(chunkPosition[0]) * 16, parseInt(chunkPosition[1]) * 16, parseInt(chunkPosition[2]) * 16)
+        instancedMesh.position.set(parseInt(chunkPosition[0]) * chunkSize, parseInt(chunkPosition[1]) * chunkSize, parseInt(chunkPosition[2]) * chunkSize)
         Object.assign(chunkEntities, { [chunk]: instancedMesh })
     }
 }
@@ -203,7 +277,7 @@ const updateWorld = (worldUpdate) => {
 const loadWorld = (chunk) => {
     const chunkPosition = chunk.split(',')
 
-    let newChunk = new ArrayBuffer(4096)
+    let newChunk = new ArrayBuffer(chunkSize * chunkSize * chunkSize)
 
     let chunkView = new DataView(newChunk)
     for (let i = 0; i < chunkView.byteLength; i++) {
@@ -211,7 +285,7 @@ const loadWorld = (chunk) => {
         chunkView.setUint8(i, block)
     }
     Object.assign(chunks, { [chunk]: newChunk })
-    updateWorld({ [chunk]: newChunk })
+    generateChunkMesh({ [chunk]: newChunk })
 }
 
 
@@ -297,41 +371,41 @@ function onMouseDown(event) {
             let y
             let z
             if (intersect.object.position.x >= 0) {
-                for (x = intersect.object.position.x; x > 16; x -= 16) {
+                for (x = intersect.object.position.x; x > chunkSize; x -= chunkSize) {
                     chunkCoordX++
                     console.log(chunkCoordX, chunkCoordY, chunkCoordZ, x, y, z)
                 }
             } else if (intersect.object.position.x < 0) {
-                for (x = intersect.object.position.x; x < 0; x += 16) {
+                for (x = intersect.object.position.x; x < 0; x += chunkSize) {
                     chunkCoordX--
                     console.log(chunkCoordX, chunkCoordY, chunkCoordZ, x, y, z)
                 }
             }
 
             if (intersect.object.position.y >= 0) {
-                for (y = intersect.object.position.y; y > 16; y -= 16) {
+                for (y = intersect.object.position.y; y > chunkSize; y -= chunkSize) {
                     chunkCoordY++
                     console.log(chunkCoordX, chunkCoordY, chunkCoordZ, x, y, z)
                 }
             } else if (intersect.object.position.y < 0) {
-                for (y = intersect.object.position.y; y < 0; y += 16) {
+                for (y = intersect.object.position.y; y < 0; y += chunkSize) {
                     chunkCoordY--
                     console.log(chunkCoordX, chunkCoordY, chunkCoordZ, x, y, z)
                 }
             }
 
             if (intersect.object.position.z >= 0) {
-                for (z = intersect.object.position.z; z > 16; z -= 16) {
+                for (z = intersect.object.position.z; z > chunkSize; z -= chunkSize) {
                     chunkCoordZ++
                     console.log(chunkCoordX, chunkCoordY, chunkCoordZ, x, y, z)
                 }
             } else if (intersect.object.position.z < 0) {
-                for (z = intersect.object.position.z; z < 0; z += 16) {
+                for (z = intersect.object.position.z; z < 0; z += chunkSize) {
                     chunkCoordZ--
                     console.log(chunkCoordX, chunkCoordY, chunkCoordZ, x, y, z)
                 }
             }
-            const innerChunkIndex = x + 16 * z + y * 16 * 16
+            const innerChunkIndex = x + chunkSize * z + y * chunkSize * chunkSize
             const chunkCoordsString = `${chunkCoordX},${chunkCoordY},${chunkCoordZ}`
             sendWorldData({ [chunkCoordsString]: { [innerChunkIndex]: { 'x': x, 'y': y, 'z': z, 'type': 0, 'config': undefined } } })
 
@@ -360,7 +434,7 @@ function onMouseDown(event) {
 
     sock.on('receiveWorldData', (worldUpdate) => {
         console.log(`World Update: ${JSON.stringify(worldUpdate)}`)
-        updateWorld(worldUpdate)
+        generateChunkMesh(worldUpdate)
 
     })
 
@@ -377,7 +451,7 @@ function onMouseDown(event) {
     sendPlayerData(sock)
 })()
 
-let renderDistance = 8
+let renderDistance = 0
 const loadNewChunks = () => {
     let chunkArray = Object.keys(chunks)
     for (let x = 0, i = 0; x < renderDistance; x++) {
@@ -385,7 +459,7 @@ const loadNewChunks = () => {
             for (let z = 0; z < renderDistance; z++) {
 
                 if (!chunkArray[i]) {
-                    let chunkString = `${(x/2)-x},${(y/2)-y},${(z/2)-z}`
+                    let chunkString = `${(x / 2) - x},${(y / 2) - y},${(z / 2) - z}`
                     loadWorld(chunkString)
                 }
 
