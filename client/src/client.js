@@ -196,82 +196,124 @@ let blockCounts = []
 //Take the block array and iterate over it, for each block check if there are adjacent blocks and for each side where there is not an adjacent block,
 // place an instanced mesh of a blockface on that side with that configuration
 
-const topFaceVertices = new Int8Array([/* v0 */ -1, -1, 1, /* v1 */ 1, -1, 1, /* v2 */ 1, 1, 1, /* v3 */ -1, 1, 1]);
-const leftFaceVertices = new Int8Array([/* v0 */ 1, -1, 1, /* v1 */ 1, -1, 1, /* v2 */ 1, 1, 1, /* v3 */ -1, 1, 1]);
-const indices = [0, 1, 2, 2, 3, 0,];
+//const indices = [0, 1, 2, 2, 3, 0];
 
-const addFace = (side) => {
-
-    const blockFace = new THREE.BufferGeometry()
-    console.log(blockFace)
-    console.log(side)
-
-    let vertices
-    console.log(vertices)
-
-    if (side == 'topFace'){
-        vertices = new Int8Array([1, 1, -1,    -1, 1, -1,    -1, 1, 1,    1, 1, 1 ]);
-    } else if (side == 'bottomFace'){
-        vertices = new Int8Array([-1, -1, -1,    1, -1, -1,    1, -1, 1,    -1, -1, 1,]);
-    } else if (side == 'leftFace'){
-        vertices = new Int8Array([/* v0 */ -1, -1, 1, /* v1 */ 1, -1, 1, /* v2 */ 1, 1, 1, /* v3 */ -1, 1, 1]);
-    } else if (side == 'rightFace'){
-        vertices = new Int8Array([  /* v1 */ 1, -1, -1, /* v0 */-1, -1, -1, /* v3 */-1, 1, -1,/* v2 */ 1, 1, -1]);
-    } else if (side == 'frontFace'){
-        vertices = new Int8Array([/* v0 */ 1, -1, 1, /* v1 */ 1, -1, -1, /* v2 */ 1, 1, -1, /* v3 */ 1, 1, 1]);
-    } else if (side == 'backFace'){
-        vertices = new Int8Array([/* v0 */  /* v1 */ -1, -1, -1,    -1, -1, 1,    -1, 1, 1,/* v2 */ -1, 1, -1, /* v3 */ ]);
-    } 
-    if (!vertices){return console.log('side undefined')}
-
-    console.log(vertices)
-    const meshMat = new THREE.MeshBasicMaterial({color: new THREE.Color(`hsl(${Math.random() * 360}, 50%, 66%)`)});
-    blockFace.setIndex(indices);
-    console.log(blockFace)
-    blockFace.setAttribute( 'position', new THREE.BufferAttribute( vertices, 3 ) ); 
-    console.log(blockFace)
-    const mesh = new THREE.Mesh(blockFace, meshMat);
-    console.log(mesh)
-    scene.add(mesh)
+const addFace = (side, x, y, z) => {
 }
 
-addFace('frontFace')
-addFace('backFace')
-addFace('leftFace')
-addFace('rightFace')
-addFace('topFace')
-addFace('bottomFace')
+
+/**
+ * 
+ * Make a BufferGeometry with a ShaderMaterial as the material
+ * Compress voxel data into a 32 bit float (use video for reference)
+ * Add compressed floats a typed array
+ * Pass typed array into the BufferGeometry ShaderMaterial
+ * Split the floats apart, then loop through the chunk and calculate the vertices needed for each face (dont add unneeded vertices)
+ * 
+ * Pass nessicary voxel data to fragment shader
+ * Apply textures to each blockface
+ * 
+ * Add buffergeometry to scene
+ * Update it only when needed
+ * 
+ */
+
+
+const chunkMaterial = new THREE.ShaderMaterial({
+  wireframe: true,
+  vertexShader: `
+  void main()	{
+    // projectionMatrix, modelViewMatrix, position -> passed in from Three.js
+    gl_Position = projectionMatrix
+      * modelViewMatrix
+      * vec4(position.x, position.y, position.z, 1.0);
+  }
+  `,
+  fragmentShader: `
+  void main() {
+    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+  }
+  `,
+});
+
 
 const generateChunkMesh = ( worldUpdate) => {
-
+    //console.log(worldUpdate)
     for (const chunk in worldUpdate) {
         const chunkView = new DataView(worldUpdate[chunk])
-        let block = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x00ff00 }))
-        let instancedMesh = new THREE.InstancedMesh(block.geometry, block.material, chunkView.byteLength)
+        const chunkGeometry = new THREE.BufferGeometry()
+        let vertices = []
+        
+        //const voxelArray = new Float32Array([])
+        //const a_voxels = new THREE.BufferAttribute(voxelArray, 1, false)
 
-        for (let x = 0, i = 0; x < chunkSize; x++) {
+        for (let z = 0, index = 0; z < chunkSize; z++) {
             for (let y = 0; y < chunkSize; y++) {
-                for (let z = 0; z < chunkSize; z++) {
+                for (let x = 0; x < chunkSize; x++) {
                     //if (chunkView.getUint8(i)) continue
+                    let normal = 1
+                    const texture = chunkView.getUint8(index)
+                    
+                    //do vertex calculation on gpu
+                    let voxelData = 0b00000000000000000000000000000000
+                    voxelData = voxelData | x
+                    voxelData = voxelData | ( y << 6)
+                    voxelData = voxelData | ( z << 12)
+                    voxelData = voxelData | ( normal << 18)
+                    voxelData = voxelData | ( texture << 21)
+                    //console.log(voxelData)
+                    const blockFace = new THREE.BufferGeometry()
+                    //console.log(blockFace)
+                    //console.log(side)
+                
+                    let newVertices = []
 
-                    block.position.set(x, y, z);
+                    let  side = 'topFace'
+                
+                    if (side == 'topFace'){
+                        newVertices = new Int8Array([1+x, 1+y, z,   x, 1+y, z,    x, 1+y, 1+z,  x, 1+y, 1+z,   1+x, 1+y, 1+z, 1+x, 1+y, z,]);
+                    } else if (side == 'bottomFace'){
+                        newVertices = new Int8Array([x, y, z,       1+x, y, z,    1+x, y, 1+z,  1+x, y, 1+z,   x, y, 1+z,   x, y, z, ]);
+                    } else if (side == 'leftFace'){
+                        newVertices = new Int8Array([x, y, 1+z,     1+x, y, 1+z,  1+x, 1+y, 1+z, 1+x, 1+y, 1+z,  x, 1+y, 1+z, x, y, 1+z,]);
+                    } else if (side == 'rightFace'){
+                        newVertices = new Int8Array([1+x, y, z,     x, y, z,      x, 1+y, z,   x, 1+y, z,    1+x, 1+y, z, 1+x, y, z, ]);
+                    } else if (side == 'frontFace'){
+                        newVertices = new Int8Array([1+x, y, 1+z,   1+x, y, z,    1+x, 1+y, z,  1+x, 1+y, z,   1+x, 1+y, 1+z, 1+x, y, 1+z,]);
+                    } else if (side == 'backFace'){
+                        newVertices = new Int8Array([x, y, z,       x, y, 1+z,    x, 1+y, 1+z,  x, 1+y, 1+z,   x, 1+y, z, x, y, z,]);
+                    } 
+                    if (!newVertices){return console.log('side undefined')}
+                    
+                    vertices.push(...newVertices);
+                
+                    const meshMat = new THREE.MeshBasicMaterial({color: new THREE.Color(`hsl(${Math.random() * 360}, 50%, 66%)`)});
 
-                    block.updateMatrix();
-
-                    instancedMesh.setMatrixAt(i, block.matrix);
-
-                    instancedMesh.setColorAt(i, new THREE.Color(`hsl(${Math.random() * 360}, 50%, 66%)`));
-
-                    i++
+                    index++
                 }
             }
         }
 
-        scene.add(instancedMesh)
-        const chunkPosition = chunk.split(',')
-        instancedMesh.position.set(parseInt(chunkPosition[0]) * chunkSize, parseInt(chunkPosition[1]) * chunkSize, parseInt(chunkPosition[2]) * chunkSize)
-        Object.assign(chunkEntities, { [chunk]: instancedMesh })
+        
+        //const chunkPosition = chunk.split(',')
+        //instancedMesh.position.set(parseInt(chunkPosition[0]) * chunkSize, parseInt(chunkPosition[1]) * chunkSize, parseInt(chunkPosition[2]) * chunkSize)
+        //Object.assign(chunkEntities, { [chunk]: instancedMesh })
+
+        // itemSize = 3 because there are 3 values (components) per vertex
+        const vertexArray = new Int8Array(vertices);
+        chunkGeometry.setAttribute('position', new THREE.BufferAttribute(vertexArray, 3));
+        const chunkMesh = new THREE.Mesh(chunkGeometry, chunkMaterial);
+        scene.add(chunkMesh);
     }
+}
+
+const getVoxelIndex = (x, y, z) => {
+    return x + y*chunkSize + z*chunkSize**2
+}
+
+const getVoxelPosition = (index) => {
+    // x,y,z
+    return [index % 32, (((index-(index % 32))/32) % 32), (((index-(index % (32**2)))/32)/32) % 32]
 }
 
 const loadWorld = (chunk) => {
@@ -421,7 +463,7 @@ function onMouseDown(event) {
 
 (() => {
     sock = io()
-    //recives from server
+    //receives from server
     sock.on('message', (text) => {
         log(text)
     })
@@ -451,7 +493,7 @@ function onMouseDown(event) {
     sendPlayerData(sock)
 })()
 
-let renderDistance = 0
+let renderDistance = 2
 const loadNewChunks = () => {
     let chunkArray = Object.keys(chunks)
     for (let x = 0, i = 0; x < renderDistance; x++) {

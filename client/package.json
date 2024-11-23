@@ -1,6 +1,7 @@
 {
   "main": "index.html",
   "dependencies": {
+    "socket.io": "^4.8.0",
     "three": "^0.167.1"
   }
 }

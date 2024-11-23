@@ -1,6 +1,6 @@
-const http = require('http')
+const { createServer } = require("http");
 const express = require('express')
-const socketio = require('socket.io')
+const { Server } = require("socket.io");
 const fs = require('fs')
 var { readUInt4, writeUint4 } = require('uint4');
 
@@ -10,19 +10,33 @@ const app = express();
 
 app.use(express.static(`${__dirname}/../client`))
 
-const server = http.createServer(app)
-const io = socketio(server)
+const server = createServer(app)
+const io = new Server(server, { /* options */ });
 
 //fs.writeFileSync("world.txt", "", "utf-8")
 
 let chunkChanges = {}
 let worldSeed = Math.random()*(2**16)
+let players = {}
+let activePlayers = {}
+
+const initServer = () => {
+    for (const player in activePlayers) {
+            delete players[player]
+            io.emit('removePlayer', player)
+            delete activePlayers[player]
+    sock.emit('receivePlayerData', players)
+}
+}
+
+initServer()
 
 io.on('connection', (sock) => {
     sock.emit('message', 'you are connected')
     sock.emit('worldSeed', worldSeed)
     sock.emit('receiveWorldData', chunkChanges)
     sock.emit('receivePlayerData', players)
+
 
     sock.on('message', (text) => io.emit('message', (text)))
 
@@ -69,9 +83,6 @@ server.on('error', (err) => {
 server.listen(8080, () => {
     console.log("server running at http://localhost:8080")
 })
-
-let players = {}
-let activePlayers = {}
 
 const updatePlayers = (playerUpdate) => {
     Object.assign(players, playerUpdate)

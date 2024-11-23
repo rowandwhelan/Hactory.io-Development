@@ -252,7 +252,7 @@ class FirstPersonControls extends THREE.EventDispatcher {
         this.camera.position.z += this.velocity.z
         this.camera.position.y += this.velocity.y
 
-        this.velocity.multiplyScalar(0.99)
+        this.velocity.multiplyScalar(0.96)
 
         //console.log(this.camera.position)
     }
