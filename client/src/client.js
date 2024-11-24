@@ -66,25 +66,25 @@ scene.fog = new THREE.Fog(0xFFFFFF, 400, 600)
 
 
 //Direction vectors for debugging
-const origin = new THREE.Vector3( 0, 0, 0 ); 
-const length = 5; 
+const origin = new THREE.Vector3(0, 0, 0);
+const length = 5;
 
-const dirX = new THREE.Vector3( 1, 0, 0 ); //normalize the direction vector (convert to vector of length 1) 
-dirX.normalize(); 
-const hexX = 0xff0000; 
-const arrowHelperX = new THREE.ArrowHelper( dirX, origin, length, hexX ); 
+const dirX = new THREE.Vector3(1, 0, 0); //normalize the direction vector (convert to vector of length 1) 
+dirX.normalize();
+const hexX = 0xff0000;
+const arrowHelperX = new THREE.ArrowHelper(dirX, origin, length, hexX);
 
-const dirY = new THREE.Vector3( 0, 1, 0 ); //normalize the direction vector (convert to vector of length 1) 
-dirY.normalize(); 
-const hexY = 0x00ff00; 
-const arrowHelperY = new THREE.ArrowHelper( dirY, origin, length, hexY ); 
+const dirY = new THREE.Vector3(0, 1, 0); //normalize the direction vector (convert to vector of length 1) 
+dirY.normalize();
+const hexY = 0x00ff00;
+const arrowHelperY = new THREE.ArrowHelper(dirY, origin, length, hexY);
 
-const dirZ = new THREE.Vector3( 0, 0, 1 ); //normalize the direction vector (convert to vector of length 1) 
-dirZ.normalize(); 
-const hexZ = 0x0000ff; 
-const arrowHelperZ = new THREE.ArrowHelper( dirZ, origin, length, hexZ ); 
+const dirZ = new THREE.Vector3(0, 0, 1); //normalize the direction vector (convert to vector of length 1) 
+dirZ.normalize();
+const hexZ = 0x0000ff;
+const arrowHelperZ = new THREE.ArrowHelper(dirZ, origin, length, hexZ);
 
-scene.add( arrowHelperX, arrowHelperY, arrowHelperZ);
+scene.add(arrowHelperX, arrowHelperY, arrowHelperZ);
 
 
 /**
@@ -216,6 +216,12 @@ const addFace = (side, x, y, z) => {
  * Add buffergeometry to scene
  * Update it only when needed
  * 
+ * 
+ * 
+ * 
+ * 
+ * Known issues:
+ * chunks generate their entire face on their borders unless there is air on that border
  */
 
 
@@ -240,179 +246,193 @@ const fragmentShader = `
 
 // Create the shader material
 const chunkMaterial = new THREE.ShaderMaterial({
+    wireframe: false,
     vertexShader: vertexShader,
     fragmentShader: fragmentShader,
     vertexColors: true  // Enable vertex colors
 });
 
 
-const generateChunkMesh = ( worldUpdate) => {
-    //console.log(worldUpdate)
+// Helper function to get chunk coordinates from world coordinates
+const getChunkCoords = (x, y, z) => ({
+    chunkX: Math.floor(x / chunkSize),
+    chunkY: Math.floor(y / chunkSize),
+    chunkZ: Math.floor(z / chunkSize),
+    localX: ((x % chunkSize) + chunkSize) % chunkSize,
+    localY: ((y % chunkSize) + chunkSize) % chunkSize,
+    localZ: ((z % chunkSize) + chunkSize) % chunkSize
+});
+
+const isVoxelAt = (x, y, z, currentChunkView, worldUpdate) => {
+    // Get chunk and local coordinates
+    const coords = getChunkCoords(x, y, z);
+    
+    // If we're within the current chunk bounds
+    if (x >= 0 && x < chunkSize && y >= 0 && y < chunkSize && z >= 0 && z < chunkSize) {
+        const index = (z * chunkSize * chunkSize) + (y * chunkSize) + x;
+        return currentChunkView.getUint8(index) !== 0;
+    }
+    
+    // If we're checking a neighboring chunk
+    const neighborChunkKey = `${coords.chunkX},${coords.chunkY},${coords.chunkZ}`;
+    const neighborChunk = worldUpdate[neighborChunkKey];
+    
+    // If the neighboring chunk exists in our update
+    if (neighborChunk) {
+        const neighborView = new DataView(neighborChunk);
+        const index = (coords.localZ * chunkSize * chunkSize) + 
+                     (coords.localY * chunkSize) + 
+                     coords.localX;
+        return neighborView.getUint8(index) !== 0;
+    }
+    
+    // If the neighboring chunk doesn't exist, return false to create a face
+    return false;
+};
+
+const generateChunkMesh = (worldUpdate) => {
+    console.log(worldUpdate)
     for (const chunk in worldUpdate) {
-        const chunkView = new DataView(worldUpdate[chunk])
-        const chunkGeometry = new THREE.BufferGeometry()
-        let vertices = []
+        const chunkView = new DataView(worldUpdate[chunk]);
+        const chunkGeometry = new THREE.BufferGeometry();
+        let vertices = [];
         let colors = [];
         
-        //const voxelArray = new Float32Array([])
-        //const a_voxels = new THREE.BufferAttribute(voxelArray, 1, false)
+        // Get current chunk coordinates
+        const [chunkX, chunkY, chunkZ] = chunk.split(',').map(Number);
+        const chunkWorldX = chunkX * chunkSize;
+        const chunkWorldY = chunkY * chunkSize;
+        const chunkWorldZ = chunkZ * chunkSize;
 
-        for (let z = 0, index = 0; z < chunkSize; z++) {
+        for (let z = 0; z < chunkSize; z++) {
             for (let y = 0; y < chunkSize; y++) {
                 for (let x = 0; x < chunkSize; x++) {
+                    const index = (z * chunkSize * chunkSize) + (y * chunkSize) + x;
                     const voxel = chunkView.getUint8(index);
-                    //if (!voxel) continue; // Skip empty voxels
-                    //if (chunkView.getUint8(i)) continue
-                    let normal = 1
-                    const texture = chunkView.getUint8(index)
                     
+                    if (voxel === 0) continue;
+
                     // Generate random color for the block
                     const r = Math.random();
                     const g = Math.random();
                     const b = Math.random();
 
-                    //do vertex calculation on gpu
-                    let voxelData = 0b00000000000000000000000000000000
-                    voxelData = voxelData | x
-                    voxelData = voxelData | ( y << 6)
-                    voxelData = voxelData | ( z << 12)
-                    voxelData = voxelData | ( normal << 18)
-                    voxelData = voxelData | ( texture << 21)
-                    //console.log(voxelData)
-                    const blockFace = new THREE.BufferGeometry()
-                    //console.log(blockFace)
-                    //console.log(side)
-                
-                    let newVertices = []
+                    // World space coordinates for neighbor checks
+                    const worldX = chunkWorldX + x;
+                    const worldY = chunkWorldY + y;
+                    const worldZ = chunkWorldZ + z;
 
-                    let  side = 'topFace'
-                    console.log(`Voxel at (${x}, ${y}, ${z}):`, voxel);
+                    // Check neighbors using world coordinates
+                    // Right face (positive X)
+                    if (!isVoxelAt(x + 1, y, z, chunkView, worldUpdate)) {
+                        vertices.push(
+                            1 + x, y, z,
+                            1 + x, 1 + y, z,
+                            1 + x, 1 + y, 1 + z,
+                            1 + x, 1 + y, 1 + z,
+                            1 + x, y, 1 + z,
+                            1 + x, y, z
+                        );
+                        for (let i = 0; i < 6; i++) colors.push(r, g, b);
+                    }
 
-                              // Add faces only if neighboring voxels are empty or out of bounds
-          if (!isVoxelAt(x + 1, y, z, chunkView)) {
-            // Right face
-            vertices.push(
-                1 + x, y, z,        // Bottom-right
-                1 + x, 1 + y, z,    // Top-right
-                1 + x, 1 + y, 1 + z,// Top-left
-                1 + x, 1 + y, 1 + z,// Top-left
-                1 + x, y, 1 + z,    // Bottom-left
-                1 + x, y, z         // Bottom-right
-              );
-              colors.push(r, g, b, r, g, b, r, g, b, r, g, b, r, g, b, r, g, b);
-          }
-          if (!isVoxelAt(x, y + 1, z, chunkView)) {
-            // Top face
-            vertices.push(
-              1 + x, 1 + y, z,
-              x, 1 + y, z,
-              x, 1 + y, 1 + z,
-              x, 1 + y, 1 + z,
-              1 + x, 1 + y, 1 + z,
-              1 + x, 1 + y, z
-            );
-            colors.push(r, g, b, r, g, b, r, g, b, r, g, b, r, g, b, r, g, b);
-          }
-          if (!isVoxelAt(x, y, z + 1, chunkView)) {
-            // Back face
-            vertices.push(
-                x, y, 1 + z,        // Bottom-left
-                1 + x, y, 1 + z,    // Bottom-right
-                1 + x, 1 + y, 1 + z,// Top-right
-                1 + x, 1 + y, 1 + z,// Top-right
-                x, 1 + y, 1 + z,    // Top-left
-                x, y, 1 + z         // Bottom-left
-              );
-              colors.push(r, g, b, r, g, b, r, g, b, r, g, b, r, g, b, r, g, b);
-          }
-          if (!isVoxelAt(x - 1, y, z, chunkView)) {
-            // Left face
-            vertices.push(
-                x, y, 1 + z,        // Bottom-left
-                x, 1 + y, 1 + z,    // Top-left
-                x, 1 + y, z,        // Top-right
-                x, 1 + y, z,        // Top-right
-                x, y, z,            // Bottom-right
-                x, y, 1 + z         // Bottom-left
-              );
-              colors.push(r, g, b, r, g, b, r, g, b, r, g, b, r, g, b, r, g, b);
-          }
-          if (!isVoxelAt(x, y - 1, z, chunkView)) {
-            // Bottom face
-            vertices.push(
-              x, y, z,
-              1 + x, y, z,
-              1 + x, y, 1 + z,
-              1 + x, y, 1 + z,
-              x, y, 1 + z,
-              x, y, z
-            );
-            colors.push(r, g, b, r, g, b, r, g, b, r, g, b, r, g, b, r, g, b);
-          }
-          if (!isVoxelAt(x, y, z - 1, chunkView)) {
-            // Front face
-            vertices.push(
-                1 + x, y, z,        // Bottom-left
-                x, y, z,            // Bottom-right
-                x, 1 + y, z,        // Top-right
-                x, 1 + y, z,        // Top-right
-                1 + x, 1 + y, z,    // Top-left
-                1 + x, y, z         // Bottom-left
-              
-            );
-            colors.push(r, g, b, r, g, b, r, g, b, r, g, b, r, g, b, r, g, b);
-          }
-          
-                    //const meshMat = new THREE.MeshBasicMaterial({color: new THREE.Color(`hsl(${Math.random() * 360}, 50%, 66%)`)});
+                    // Left face (negative X)
+                    if (!isVoxelAt(x - 1, y, z, chunkView, worldUpdate)) {
+                        vertices.push(
+                            x, y, 1 + z,
+                            x, 1 + y, 1 + z,
+                            x, 1 + y, z,
+                            x, 1 + y, z,
+                            x, y, z,
+                            x, y, 1 + z
+                        );
+                        for (let i = 0; i < 6; i++) colors.push(r, g, b);
+                    }
 
-                    index++
+                    // Top face (positive Y)
+                    if (!isVoxelAt(x, y + 1, z, chunkView, worldUpdate)) {
+                        vertices.push(
+                            1 + x, 1 + y, z,
+                            x, 1 + y, z,
+                            x, 1 + y, 1 + z,
+                            x, 1 + y, 1 + z,
+                            1 + x, 1 + y, 1 + z,
+                            1 + x, 1 + y, z
+                        );
+                        for (let i = 0; i < 6; i++) colors.push(r, g, b);
+                    }
+
+                    // Bottom face (negative Y)
+                    if (!isVoxelAt(x, y - 1, z, chunkView, worldUpdate)) {
+                        vertices.push(
+                            x, y, z,
+                            1 + x, y, z,
+                            1 + x, y, 1 + z,
+                            1 + x, y, 1 + z,
+                            x, y, 1 + z,
+                            x, y, z
+                        );
+                        for (let i = 0; i < 6; i++) colors.push(r, g, b);
+                    }
+
+                    // Front face (negative Z)
+                    if (!isVoxelAt(x, y, z - 1, chunkView, worldUpdate)) {
+                        vertices.push(
+                            1 + x, y, z,
+                            x, y, z,
+                            x, 1 + y, z,
+                            x, 1 + y, z,
+                            1 + x, 1 + y, z,
+                            1 + x, y, z
+                        );
+                        for (let i = 0; i < 6; i++) colors.push(r, g, b);
+                    }
+
+                    // Back face (positive Z)
+                    if (!isVoxelAt(x, y, z + 1, chunkView, worldUpdate)) {
+                        vertices.push(
+                            x, y, 1 + z,
+                            1 + x, y, 1 + z,
+                            1 + x, 1 + y, 1 + z,
+                            1 + x, 1 + y, 1 + z,
+                            x, 1 + y, 1 + z,
+                            x, y, 1 + z
+                        );
+                        for (let i = 0; i < 6; i++) colors.push(r, g, b);
+                    }
                 }
             }
         }
 
-        
-        //const chunkPosition = chunk.split(',')
-        //instancedMesh.position.set(parseInt(chunkPosition[0]) * chunkSize, parseInt(chunkPosition[1]) * chunkSize, parseInt(chunkPosition[2]) * chunkSize)
-        //Object.assign(chunkEntities, { [chunk]: instancedMesh })
-
-        // itemSize = 3 because there are 3 values (components) per vertex
-        const colorArray = new Float32Array(colors);
         const vertexArray = new Float32Array(vertices);
-        console.log(vertices)
+        const colorArray = new Float32Array(colors);
         chunkGeometry.setAttribute('position', new THREE.BufferAttribute(vertexArray, 3));
-        chunkGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3)); // Add colors
+        chunkGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+        
         const chunkMesh = new THREE.Mesh(chunkGeometry, chunkMaterial);
-        console.log('Geometry attributes:', chunkGeometry.attributes);
-        console.log('Vertex count:', chunkGeometry.attributes.position.count);
-        console.log('Color count:', chunkGeometry.attributes.color.count);
+        chunkMesh.position.set(chunkWorldX, chunkWorldY, chunkWorldZ);
         scene.add(chunkMesh);
     }
-}
-
-const isVoxelAt = (x, y, z, chunkView) => {
-    if (x < 0 || x >= chunkSize || y < 0 || y >= chunkSize || z < 0 || z >= chunkSize) return false; // Out of bounds
-    const index = x + y * chunkSize + z * chunkSize * chunkSize;
-    console.log(`Voxel at (${x}, ${y}, ${z}):`, chunkView.getUint8(index));
-    return chunkView.getUint8(index) !== 0;
 };
 
 const getVoxelIndex = (x, y, z) => {
-    return x + y*chunkSize + z*chunkSize**2
+    return x + y * chunkSize + z * chunkSize ** 2
 }
 
 const getVoxelPosition = (index) => {
     // x,y,z
-    return [index % 32, (((index-(index % 32))/32) % 32), (((index-(index % (32**2)))/32)/32) % 32]
+    return [index % 32, (((index - (index % 32)) / 32) % 32), (((index - (index % (32 ** 2))) / 32) / 32) % 32]
 }
 
 const loadWorld = (chunk) => {
     const chunkPosition = chunk.split(',')
+    const blockTypes = 256
 
     let newChunk = new ArrayBuffer(chunkSize * chunkSize * chunkSize)
 
     let chunkView = new DataView(newChunk)
     for (let i = 0; i < chunkView.byteLength; i++) {
-        const block = Math.random() * 4
+        const block = Math.random() * blockTypes
         chunkView.setUint8(i, block)
     }
     Object.assign(chunks, { [chunk]: newChunk })
@@ -582,7 +602,7 @@ function onMouseDown(event) {
     sendPlayerData(sock)
 })()
 
-let renderDistance = 2
+let renderDistance = 4
 const loadNewChunks = () => {
     let chunkArray = Object.keys(chunks)
     for (let x = 0, i = 0; x < renderDistance; x++) {
@@ -590,7 +610,7 @@ const loadNewChunks = () => {
             for (let z = 0; z < renderDistance; z++) {
 
                 if (!chunkArray[i]) {
-                    let chunkString = `${(x / 2) - x},${(y / 2) - y},${(z / 2) - z}`
+                    let chunkString = `${x},${y},${z}`
                     loadWorld(chunkString)
                 }
 
