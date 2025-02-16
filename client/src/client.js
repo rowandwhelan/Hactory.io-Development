@@ -2,136 +2,112 @@ import * as THREE from 'three'
 import Stats from 'three/addons/libs/stats.module.js'
 import { FirstPersonControls } from './firstpersoncontrols.js'
 
-
 let sock
 
-//Canvas
+/**
+ * Initialize
+ */
+function initialize() {
+    // Canvas
+    const canvas = document.querySelector('canvas');
 
-const canvas = document.querySelector('canvas')
+    // Scene
+    const scene = new THREE.Scene();
 
-//Scene
-const scene = new THREE.Scene()
+    // Camera
+    var camera = new THREE.PerspectiveCamera(
+        90,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+    );
+    // Reposition the camera
+    camera.position.set(Math.random() * 10, Math.random() * 10, Math.random() * 10);
+    camera.lookAt(0, 0, 0);
 
-var camera = new THREE.PerspectiveCamera(
-    90,                                   // Field of view
-    window.innerWidth / window.innerHeight, // Aspect ratio
-    0.1,                                  // Near clipping pane
-    1000                                  // Far clipping pane
-);
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({
+        canvas: canvas,
+        antialias: true,
+    });
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    // Stats (FPS)
+    const stats = new Stats();
+    stats.domElement.style.position = 'absolute';
+    stats.domElement.style.top = '0px';
+    document.getElementById('container').appendChild(stats.domElement);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.set(1024, 1024);
+    directionalLight.shadow.camera.far = 50;
+    const dLightSize = 200;
+    directionalLight.shadow.camera.left = -dLightSize;
+    directionalLight.shadow.camera.top = dLightSize;
+    directionalLight.shadow.camera.right = dLightSize;
+    directionalLight.shadow.camera.bottom = -dLightSize;
+    directionalLight.position.set(-5, 15, 10);
+    scene.add(directionalLight);
+
+    // Fog
+    scene.fog = new THREE.Fog(0xffffff, 400, 600);
+
+    // Arrow helpers for debugging
+    const origin = new THREE.Vector3(0, 0, 0);
+    const length = 5;
+    scene.add(
+        new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0).normalize(), origin, length, 0xff0000),
+        new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0).normalize(), origin, length, 0x00ff00),
+        new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1).normalize(), origin, length, 0x0000ff)
+    );
+
+    // Plane
+    const plane = new THREE.Mesh(
+        new THREE.PlaneGeometry(500, 500, 500, 500),
+        new THREE.MeshBasicMaterial({ color: 0x222222, wireframe: true })
+    );
+    plane.rotateX(Math.PI / 2);
+    scene.add(plane);
+
+    // FirstPersonControls
+    const controls = new FirstPersonControls(camera);
+    controls.enabled = true;
+
+    // Event Listeners
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    });
+
+    window.addEventListener('click', () => {
+        if (!paused) {
+            document.body.requestPointerLock();
+        }
+    });
+
+    return { scene, camera, renderer, stats, controls };
+}
+
+const { scene, camera, renderer, stats, controls } = initialize();
 
 /**
- * Renderer
+ * Constants
  */
-const renderer = new THREE.WebGLRenderer({
-    canvas: canvas,
-    antialias: true
-})
-renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
-renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-
-/**
- * GUI
- */
-//FPS Indicator
-const container = document.getElementById('container')
-const stats = new Stats()
-stats.domElement.style.position = 'absolute'
-stats.domElement.style.top = '0px'
-container.appendChild(stats.domElement)
-
-/**
- * Lighting
- */
-//Ambient Light
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.7)
-scene.add(ambientLight)
-
-//Directional Light
-const directionalLight = new THREE.DirectionalLight(0xFFFFFF, 0.8)
-directionalLight.castShadow = true
-directionalLight.shadow.mapSize.set(1024, 1024)
-directionalLight.shadow.camera.far = 50
-const dLightSize = 200
-directionalLight.shadow.camera.left = - dLightSize
-directionalLight.shadow.camera.top = dLightSize
-directionalLight.shadow.camera.right = dLightSize
-directionalLight.shadow.camera.bottom = - dLightSize
-directionalLight.position.set(-5, 15, 10)
-scene.add(directionalLight)
-
-//Fog or FogExp2 [fog grows exponetially] (color, near limit, far limit)
-scene.fog = new THREE.Fog(0xFFFFFF, 400, 600)
-
-
-//Direction vectors for debugging
-const origin = new THREE.Vector3(0, 0, 0);
-const length = 5;
-
-const dirX = new THREE.Vector3(1, 0, 0); //normalize the direction vector (convert to vector of length 1) 
-dirX.normalize();
-const hexX = 0xff0000;
-const arrowHelperX = new THREE.ArrowHelper(dirX, origin, length, hexX);
-
-const dirY = new THREE.Vector3(0, 1, 0); //normalize the direction vector (convert to vector of length 1) 
-dirY.normalize();
-const hexY = 0x00ff00;
-const arrowHelperY = new THREE.ArrowHelper(dirY, origin, length, hexY);
-
-const dirZ = new THREE.Vector3(0, 0, 1); //normalize the direction vector (convert to vector of length 1) 
-dirZ.normalize();
-const hexZ = 0x0000ff;
-const arrowHelperZ = new THREE.ArrowHelper(dirZ, origin, length, hexZ);
-
-scene.add(arrowHelperX, arrowHelperY, arrowHelperZ);
-
-
-/**
- * Event Listeners
- */
-
-window.addEventListener('resize', () => {
-
-    // Update camera
-    camera.aspect = window.innerWidth / window.innerHeight
-    camera.updateProjectionMatrix()
-
-    // Update renderer
-    renderer.setSize(window.innerWidth, window.innerHeight)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.render(scene, camera)
-})
-
-window.addEventListener('click', (event) => {
-    //if (!controls.enabled) {
-    //return
-    //}
-    document.body.requestPointerLock();
-})
-
-//Chunk Size
+const seed = 12345; // Fixed seed for deterministic generation
 const chunkSize = 32
-
-// Reposition the camera
-camera.position.set(Math.random() * 10, Math.random() * 10, Math.random() * 10);
-
-const geometry = new THREE.BoxGeometry(1, 1, 1);
-const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-const cube = new THREE.Mesh(geometry, material);
-scene.add(cube);
-
-// A mesh is created from the geometry and material, then added to the scene
-var plane = new THREE.Mesh(
-    new THREE.PlaneGeometry(500, 500, 500, 500),
-    new THREE.MeshBasicMaterial({ color: 0x222222, wireframe: true })
-);
-plane.rotateX(Math.PI / 2);
-scene.add(plane);
-
-const controls = new FirstPersonControls(camera)
-controls.enabled = true
-
+const blockTypes = 400
+const atlasSize = 2
+let renderDistance = 2
 
 /**
  * Players
@@ -191,8 +167,6 @@ const updatePlayers = (playerUpdate, add) => {
  * @param {string} face - The face of the block ("front", "back", "left", "right", "top", "bottom").
  * @returns {number[]} Array of UV coordinates for the face.
  */
-const blockTypes = 4
-const atlasSize = 2
 
 function getFaceUVs(blockTypes, atlasSize, blockType, face) {
     if (blockType < 0 || blockType >= blockTypes) {
@@ -226,12 +200,6 @@ function getFaceUVs(blockTypes, atlasSize, blockType, face) {
     return uvFaces[face] || [];
 }
 
-
-
-//const chunks = {}
-const chunkEntities = {}
-let blockCounts = []
-
 //Store blocks as chunks, update them as chunks. Group chunk data to create instanced meshes for each block type
 //Request chunks from server
 //Get an array of blocks per chunk from server
@@ -242,7 +210,6 @@ let blockCounts = []
 //const indices = [0, 1, 2, 2, 3, 0];
 
 /**
- * 
  * Make a BufferGeometry with a ShaderMaterial as the material
  * Compress voxel data into a 32 bit float (use video for reference)
  * Add compressed floats a typed array
@@ -255,14 +222,13 @@ let blockCounts = []
  * Add buffergeometry to scene
  * Update it only when needed
  * 
- * 
- * 
- * 
- * 
  * Known issues:
  * chunks generate their entire face on their borders unless there is air on that border
+ * to be more specific, the chunk nextdoor generates an outward faces on its border, regardless of whether there is a block obstructing it in its neighbor
  */
 
+const chunks = {}; // Store loaded chunks in an object in the form "x,y,z": ArrayBuffer { ... }
+const loadedChunkSet = new Set(); // Track which chunks are currently loaded "x,y,z"
 
 // Vertex Shader
 const vertexShader = `
@@ -272,7 +238,6 @@ const vertexShader = `
         vUv = uv;  // Assign the UV attribute to the varying vUv
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
-
 `;
 
 // Fragment Shader
@@ -294,9 +259,9 @@ const chunkMaterial = new THREE.ShaderMaterial({
     fragmentShader: fragmentShader,
     uniforms: {
         atlasTexture: { value: atlasTexture }  // Pass the texture to the shader
-    }
+    },
+    side: THREE.FrontSide // Ensures proper culling of back faces
 });
-
 
 // Helper function to get chunk coordinates from world coordinates
 const getChunkCoords = (x, y, z) => ({
@@ -308,7 +273,39 @@ const getChunkCoords = (x, y, z) => ({
     localZ: ((z % chunkSize) + chunkSize) % chunkSize
 });
 
-const isVoxelAt = (x, y, z, currentChunkView, worldUpdate) => {
+// Helper function to get the opposite face of a given face
+const getOppositeFace = (face) => {
+    const oppositeFaces = {
+        left: "right",
+        right: "left",
+        top: "bottom",
+        bottom: "top",
+        front: "back",
+        back: "front",
+    };
+    return oppositeFaces[face];
+};
+
+// A simple, deterministic hash based on coordinates and a seed.
+function simpleHash(x, y, z, seed) {
+    let hash = seed;
+    hash = (hash * 31 + x) | 0;
+    hash = (hash * 31 + y) | 0;
+    hash = (hash * 31 + z) | 0;
+    return hash >>> 0; // ensure non-negative
+}
+
+// Use the hash to determine the block type.
+// We’ll designate 0 as air, and nonzero values as different block types.
+function getVoxelAtGlobal(x, y, z, seed) {
+    const h = simpleHash(x, y, z, seed);
+    // For example, we can say that 5% of voxels are air.
+    if (h % 100 < 5) return 0;
+    // Otherwise, assign a block type between 1 and (blockTypes - 1).
+    return (h % (blockTypes - 1)) + 1;
+}
+
+const isVoxelAt = (x, y, z, currentChunkView, filledChunk) => {
     // Get chunk and local coordinates
     const coords = getChunkCoords(x, y, z);
 
@@ -323,13 +320,13 @@ const isVoxelAt = (x, y, z, currentChunkView, worldUpdate) => {
 
     // Check neighboring chunk
     const neighborChunkKey = `${coords.chunkX},${coords.chunkY},${coords.chunkZ}`;
-    const neighborChunk = worldUpdate[neighborChunkKey];
+    const neighborChunk = filledChunk[neighborChunkKey];
 
     if (neighborChunk) {
         const neighborView = new DataView(neighborChunk);
-        const index = (coords.localZ * chunkSize * chunkSize) + 
-                      (coords.localY * chunkSize) + 
-                      coords.localX;
+        const index = (coords.localZ * chunkSize * chunkSize) +
+            (coords.localY * chunkSize) +
+            coords.localX;
         return neighborView.getUint8(index) !== 0;
     }
 
@@ -337,43 +334,64 @@ const isVoxelAt = (x, y, z, currentChunkView, worldUpdate) => {
     return false;
 };
 
+function isVoxelAtGlobal(x, y, z) {
+    const { chunkX, chunkY, chunkZ, localX, localY, localZ } = getChunkCoords(x, y, z);
+    const chunkKey = `${chunkX},${chunkY},${chunkZ}`;
+    if (chunks[chunkKey]) {
+        const chunkView = new DataView(chunks[chunkKey]);
+        const index = (localZ * chunkSize * chunkSize) + (localY * chunkSize) + localX;
+        return chunkView.getUint8(index) !== 0;
+    }
+    return false;
+}
 
-const generateChunkMesh = (worldUpdate) => {
-    console.log(worldUpdate)
-    for (const chunk in worldUpdate) {
-        const chunkView = new DataView(worldUpdate[chunk]);
+// Generate a chunk of voxel data based on global coordinates.
+// Recieves a filledChunk object containing: Object { "x,y,z": ArrayBuffer { ... } }
+const generateChunkMesh = (filledChunk) => {
+    for (const chunk in filledChunk) {
+        // Remove any existing mesh for this chunk.
+        const oldMesh = scene.getObjectByName(chunk);
+        if (oldMesh) {
+            scene.remove(oldMesh);
+        }
+
+        const chunkView = new DataView(filledChunk[chunk]);
         const chunkGeometry = new THREE.BufferGeometry();
         let vertices = [];
         let colors = [];
-        let uvs = []; 
-        
-        // Get current chunk coordinates
+        let uvs = [];
+
+        // Get current chunk coordinates from the chunk key string ("x,y,z")
         const [chunkX, chunkY, chunkZ] = chunk.split(',').map(Number);
         const chunkWorldX = chunkX * chunkSize;
         const chunkWorldY = chunkY * chunkSize;
         const chunkWorldZ = chunkZ * chunkSize;
 
+        // Loop through every voxel in the chunk.
+        // Terrible for performance, must be optimized.
         for (let z = 0; z < chunkSize; z++) {
             for (let y = 0; y < chunkSize; y++) {
                 for (let x = 0; x < chunkSize; x++) {
                     const index = (z * chunkSize * chunkSize) + (y * chunkSize) + x;
                     const voxel = chunkView.getUint8(index);
-                    
+
                     if (voxel === 0) continue;
 
-                    // Generate random color for the block
+                    // Generate random color (for debugging/visualization)
                     const r = Math.random();
                     const g = Math.random();
                     const b = Math.random();
 
-                    // World space coordinates for neighbor checks
+                    // Calculate world coordinates for this voxel.
                     const worldX = chunkWorldX + x;
                     const worldY = chunkWorldY + y;
                     const worldZ = chunkWorldZ + z;
 
-                    // Check neighbors using world coordinates
+                    // Check neighbors using global coordinates.
+                    // For each face, if there is no adjacent voxel, add the face's vertices.
+
                     // Right face (positive X)
-                    if (!isVoxelAt(x + 1, y, z, chunkView, worldUpdate)) {
+                    if (!isVoxelAtGlobal(worldX + 1, worldY, worldZ)) {
                         vertices.push(
                             1 + x, y, z,
                             1 + x, 1 + y, z,
@@ -382,12 +400,12 @@ const generateChunkMesh = (worldUpdate) => {
                             1 + x, y, 1 + z,
                             1 + x, y, z
                         );
-                        for (let i = 0; i < 6; i++) colors.push(r, g, b);
+                        //for (let i = 0; i < 6; i++) colors.push(r, g, b);
                         uvs.push(...getFaceUVs(blockTypes, atlasSize, voxel, "right"));
                     }
 
                     // Left face (negative X)
-                    if (!isVoxelAt(x - 1, y, z, chunkView, worldUpdate)) {
+                    if (!isVoxelAtGlobal(worldX - 1, worldY, worldZ)) {
                         vertices.push(
                             x, y, 1 + z,
                             x, 1 + y, 1 + z,
@@ -396,12 +414,12 @@ const generateChunkMesh = (worldUpdate) => {
                             x, y, z,
                             x, y, 1 + z
                         );
-                        for (let i = 0; i < 6; i++) colors.push(r, g, b);
+                        //for (let i = 0; i < 6; i++) colors.push(r, g, b);
                         uvs.push(...getFaceUVs(blockTypes, atlasSize, voxel, "left"));
                     }
 
                     // Top face (positive Y)
-                    if (!isVoxelAt(x, y + 1, z, chunkView, worldUpdate)) {
+                    if (!isVoxelAtGlobal(worldX, worldY + 1, worldZ)) {
                         vertices.push(
                             1 + x, 1 + y, z,
                             x, 1 + y, z,
@@ -410,12 +428,12 @@ const generateChunkMesh = (worldUpdate) => {
                             1 + x, 1 + y, 1 + z,
                             1 + x, 1 + y, z
                         );
-                        for (let i = 0; i < 6; i++) colors.push(r, g, b);
+                        //for (let i = 0; i < 6; i++) colors.push(r, g, b);
                         uvs.push(...getFaceUVs(blockTypes, atlasSize, voxel, "top"));
                     }
 
                     // Bottom face (negative Y)
-                    if (!isVoxelAt(x, y - 1, z, chunkView, worldUpdate)) {
+                    if (!isVoxelAtGlobal(worldX, worldY - 1, worldZ)) {
                         vertices.push(
                             x, y, z,
                             1 + x, y, z,
@@ -424,12 +442,12 @@ const generateChunkMesh = (worldUpdate) => {
                             x, y, 1 + z,
                             x, y, z
                         );
-                        for (let i = 0; i < 6; i++) colors.push(r, g, b);
+                        //for (let i = 0; i < 6; i++) colors.push(r, g, b);
                         uvs.push(...getFaceUVs(blockTypes, atlasSize, voxel, "bottom"));
                     }
 
                     // Front face (negative Z)
-                    if (!isVoxelAt(x, y, z - 1, chunkView, worldUpdate)) {
+                    if (!isVoxelAtGlobal(worldX, worldY, worldZ - 1)) {
                         vertices.push(
                             1 + x, y, z,
                             x, y, z,
@@ -438,12 +456,12 @@ const generateChunkMesh = (worldUpdate) => {
                             1 + x, 1 + y, z,
                             1 + x, y, z
                         );
-                        for (let i = 0; i < 6; i++) colors.push(r, g, b);
+                        //for (let i = 0; i < 6; i++) colors.push(r, g, b);
                         uvs.push(...getFaceUVs(blockTypes, atlasSize, voxel, "front"));
                     }
 
                     // Back face (positive Z)
-                    if (!isVoxelAt(x, y, z + 1, chunkView, worldUpdate)) {
+                    if (!isVoxelAtGlobal(worldX, worldY, worldZ + 1)) {
                         vertices.push(
                             x, y, 1 + z,
                             1 + x, y, 1 + z,
@@ -452,60 +470,76 @@ const generateChunkMesh = (worldUpdate) => {
                             x, 1 + y, 1 + z,
                             x, y, 1 + z
                         );
-                        for (let i = 0; i < 6; i++) colors.push(r, g, b);
+                        //for (let i = 0; i < 6; i++) colors.push(r, g, b);
                         uvs.push(...getFaceUVs(blockTypes, atlasSize, voxel, "back"));
                     }
                 }
             }
         }
 
+        // Build the geometry
         const vertexArray = new Float32Array(vertices);
         const colorArray = new Float32Array(colors);
         const uvArray = new Float32Array(uvs);
         chunkGeometry.setAttribute('position', new THREE.BufferAttribute(vertexArray, 3));
         chunkGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
         chunkGeometry.setAttribute('uv', new THREE.BufferAttribute(uvArray, 2));
-        
+
+        // Create the mesh
         const chunkMesh = new THREE.Mesh(chunkGeometry, chunkMaterial);
         chunkMesh.position.set(chunkWorldX, chunkWorldY, chunkWorldZ);
+        // Set the mesh name to the chunk key for easy lookup later.
+        chunkMesh.name = chunk;
         scene.add(chunkMesh);
     }
 };
 
-const getVoxelIndex = (x, y, z) => {
-    return x + y * chunkSize + z * chunkSize ** 2
-}
-
-const getVoxelPosition = (index) => {
-    // x,y,z
-    return [index % 32, (((index - (index % 32)) / 32) % 32), (((index - (index % (32 ** 2))) / 32) / 32) % 32]
-}
-
-const seedRandom = (seed) => {
-    let value = seed;
-    return () => {
-        value = (value * 1664525 + 1013904223) % 4294967296;
-        return value / 4294967296;
-    };
-};
-
 const generateChunkData = (chunkKey, seed) => {
-    const chunkPosition = chunkKey.split(',').map(Number);
-
     const newChunk = new ArrayBuffer(chunkSize * chunkSize * chunkSize);
-    const chunkView = new DataView(newChunk);
+    const view = new DataView(newChunk);
 
-    // Use a seeded PRNG for consistency
-    const random = seedRandom(seed + chunkPosition.join(''));
-    for (let i = 0; i < chunkView.byteLength; i++) {
-        const block = Math.floor(random() * blockTypes);
-        chunkView.setUint8(i, block);
+    // Get chunk coordinates from the key.
+    const [chunkX, chunkY, chunkZ] = chunkKey.split(',').map(Number);
+
+    // Iterate over each local voxel in the chunk.
+    for (let z = 0; z < chunkSize; z++) {
+        for (let y = 0; y < chunkSize; y++) {
+            for (let x = 0; x < chunkSize; x++) {
+                // Compute global coordinates.
+                const worldX = chunkX * chunkSize + x;
+                const worldY = chunkY * chunkSize + y;
+                const worldZ = chunkZ * chunkSize + z;
+                const block = getVoxelAtGlobal(worldX, worldY, worldZ, seed);
+                const index = (z * chunkSize * chunkSize) + (y * chunkSize) + x;
+                view.setUint8(index, block);
+            }
+        }
     }
 
+    // Store the ArrayBuffer (not the DataView) for later neighbor checks.
+    chunks[chunkKey] = newChunk;
     return newChunk;
 };
 
+function updateNeighboringChunks(chunkKey) {
+    const [chunkX, chunkY, chunkZ] = chunkKey.split(',').map(Number);
 
+    const neighbors = [
+        [chunkX + 1, chunkY, chunkZ],
+        [chunkX - 1, chunkY, chunkZ],
+        [chunkX, chunkY + 1, chunkZ],
+        [chunkX, chunkY - 1, chunkZ],
+        [chunkX, chunkY, chunkZ + 1],
+        [chunkX, chunkY, chunkZ - 1],
+    ];
+
+    neighbors.forEach(([nx, ny, nz]) => {
+        const neighborKey = `${nx},${ny},${nz}`;
+        if (chunks[neighborKey]) {
+            generateChunkMesh({ [neighborKey]: chunks[neighborKey] }); // Regenerate neighbor mesh
+        }
+    });
+}
 
 
 const log = (text) => {
@@ -537,9 +571,9 @@ const sendPlayerData = (sock) => {
     sock.emit('playerData', (player))
 }
 
-const sendWorldData = (worldData) => {
-    console.log('worldData', worldData)
-    sock.emit('worldData', (worldData))
+const sendBlockUpdate = (blockUpdate) => {
+    console.log('blockUpdate', blockUpdate)
+    sock.emit('blockUpdate', (blockUpdate))
 }
 
 
@@ -625,7 +659,7 @@ function onMouseDown(event) {
             }
             const innerChunkIndex = x + chunkSize * z + y * chunkSize * chunkSize
             const chunkCoordsString = `${chunkCoordX},${chunkCoordY},${chunkCoordZ}`
-            sendWorldData({ [chunkCoordsString]: { [innerChunkIndex]: { 'x': x, 'y': y, 'z': z, 'type': 0, 'config': undefined } } })
+            sendBlockUpdate({ [chunkCoordsString]: { [innerChunkIndex]: { 'x': x, 'y': y, 'z': z, 'type': 0, 'config': undefined } } })
 
             //create cube
         } else if (event.button == 1) {
@@ -636,31 +670,44 @@ function onMouseDown(event) {
     }
 }
 
-
 (() => {
     sock = io()
-    //receives from server
+    //receives a message from the server
     sock.on('message', (text) => {
         log(text)
     })
 
-    //Receives an object with one or more players sent from the server
+    // Receives an object with one or more players sent from the server 
+    // Object received: { 'playerID': { 'position': { 'x': 0, 'y': 0, 'z': 0 } } , . . . }
     sock.on('receivePlayerData', (playerUpdate) => {
         updatePlayers(playerUpdate, true)
+
         //console.log(`New player: ${JSON.stringify(playerUpdate)}`)
     })
 
-    sock.on('receiveWorldData', (worldUpdate) => {
-        console.log(`World Update: ${JSON.stringify(worldUpdate)}`)
-        generateChunkMesh(worldUpdate)
+    // Recieves an entire from the server
+    // Object received: { 'chunkKey': ArrayBuffer { ... } }
+    sock.on('receiveChunkChanges', (chunkChanges) => {
+        //CURRENTLY DOES NOT WORK, ONLY AN EMPTY INITAL MESSAGE IS RECEIVED
+        console.log(`World Update: ${JSON.stringify(chunkChanges)}`)
+        //generateChunkMesh(chunkChanges)
+    })
 
+    // Recieves a block updates from the server
+    // Object received: { 'chunkKey': { 'blockIndex': { 'x': 0, 'y': 0, 'z': 0, 'type': 0, 'config': undefined } } }
+    sock.on('receiveBlockUpdate', (blockUpdate) => {
+        //TO DO: Implement block updates
+        //console.log(`Block Update: ${JSON.stringify(blockUpdate)}`)
     })
 
     sock.on('worldSeed', (worldSeed) => {
+        //TO DO: Implement world generation via server seed
         //seed = worldSeed
     })
 
+    //Recieves a player update as a string "playerID" from the server, only contains the playerID nothing else
     sock.on('removePlayer', (playerUpdate) => {
+        console.log(playerUpdate)
         updatePlayers(playerUpdate, false)
         //console.log(`Player removed: ${JSON.stringify(playerUpdate)}`)
     })
@@ -669,31 +716,120 @@ function onMouseDown(event) {
     sendPlayerData(sock)
 })()
 
-let renderDistance = 4
-const chunks = {}; // Store loaded chunks
-const loadedChunkSet = new Set(); // Track which chunks are currently loaded
+const worker = new Worker('./src/chunkWorker.js');
+
+worker.onmessage = (e) => {
+    //console.log("Main thread received message from worker:", e.data);
+    const { action, chunkKey, chunkData, error } = e.data;
+
+    if (action === "chunkGenerated") {
+        chunks[chunkKey] = chunkData;
+        loadedChunkSet.add(chunkKey);
+        generateChunkMesh({ [chunkKey]: chunkData });
+        // Update neighbors (you may debounce this call to reduce lag)
+        //scheduleNeighborUpdate(chunkKey);
+        updateNeighborChunks(chunkKey);
+    } else if (action === "error") {
+        console.error(`Error in worker: ${error}`);
+    }
+};
+
+let neighborUpdateTimeout = null;
+function scheduleNeighborUpdate(chunkKey) {
+    if (neighborUpdateTimeout) clearTimeout(neighborUpdateTimeout);
+    neighborUpdateTimeout = setTimeout(() => {
+        updateNeighborChunks(chunkKey);
+        neighborUpdateTimeout = null;
+    }, 50); // Adjust delay as needed
+}
+
+
+const updateNeighborChunks = (chunkKey) => {
+    const [chunkX, chunkY, chunkZ] = chunkKey.split(',').map(Number);
+    const neighborKeys = [
+        `${chunkX + 1},${chunkY},${chunkZ}`,
+        `${chunkX - 1},${chunkY},${chunkZ}`,
+        `${chunkX},${chunkY + 1},${chunkZ}`,
+        `${chunkX},${chunkY - 1},${chunkZ}`,
+        `${chunkX},${chunkY},${chunkZ + 1}`,
+        `${chunkX},${chunkY},${chunkZ - 1}`
+    ];
+
+    neighborKeys.forEach(key => {
+        if (chunks[key]) {
+            generateChunkMesh({ [key]: chunks[key] });
+        }
+    });
+};
 
 const loadWorld = (chunkKey, seed) => {
-    if (loadedChunkSet.has(chunkKey)) return; // Skip already loaded chunks
+    if (loadedChunkSet.has(chunkKey)) return;
+    worker.postMessage({
+        action: "generateChunk",
+        payload: { chunkKey, seed, chunkSize, blockTypes },
+    });
+};
 
-    const newChunk = generateChunkData(chunkKey, seed);
-    Object.assign(chunks, { [chunkKey]: newChunk });
-    loadedChunkSet.add(chunkKey);
-    generateChunkMesh({ [chunkKey]: newChunk });
+const updateNeighbors = (chunkKey) => {
+    const [chunkX, chunkY, chunkZ] = chunkKey.split(',').map(Number);
+
+    const neighbors = [
+        { key: `${chunkX + 1},${chunkY},${chunkZ}`, face: 'left' }, // +X
+        { key: `${chunkX - 1},${chunkY},${chunkZ}`, face: 'right' }, // -X
+        { key: `${chunkX},${chunkY + 1},${chunkZ}`, face: 'bottom' }, // +Y
+        { key: `${chunkX},${chunkY - 1},${chunkZ}`, face: 'top' }, // -Y
+        { key: `${chunkX},${chunkY},${chunkZ + 1}`, face: 'front' }, // +Z
+        { key: `${chunkX},${chunkY},${chunkZ - 1}`, face: 'back' }  // -Z
+    ];
+
+    neighbors.forEach((neighbor) => {
+        const neighborKey = neighbor.key;
+        if (chunks[neighborKey]) {
+            // Update neighbor's border
+            updateChunkBorder(neighborKey, neighbor.face);
+            // Update current chunk's border
+            updateChunkBorder(chunkKey, getOppositeFace(neighbor.face));
+        }
+    });
+};
+
+const updateChunkBorder = (chunkKey, face) => {
+    const chunkData = chunks[chunkKey];
+    if (!chunkData) return;
+
+    const chunkView = new DataView(chunkData);
+
+    // Iterate over the face's voxels and determine visibility
+    // Only add/remove faces that need to be updated
+    const updatedVertices = [];
+    const updatedUVs = [];
+    const updatedColors = [];
+
+    // (Implement logic to handle the specific face using the existing generateChunkMesh logic)
+
+    // Apply updates to the chunk's mesh
+    const chunkMesh = scene.getObjectByName(chunkKey);
+    if (chunkMesh) {
+        const geometry = chunkMesh.geometry;
+        // Update the geometry's attributes with the new data
+        geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(updatedVertices), 3));
+        geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(updatedUVs), 2));
+        geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(updatedColors), 3));
+        geometry.attributes.position.needsUpdate = true;
+    }
 };
 
 const unloadChunk = (chunkKey) => {
-    if (!loadedChunkSet.has(chunkKey)) return;
-
-    delete chunks[chunkKey];
-    loadedChunkSet.delete(chunkKey);
-
-    // Optionally remove associated mesh from the scene
     const chunkMesh = scene.getObjectByName(chunkKey);
     if (chunkMesh) {
         scene.remove(chunkMesh);
+        //console.log(`Unloaded chunk: ${chunkKey}`);
     }
+    delete chunks[chunkKey];
+    loadedChunkSet.delete(chunkKey);
 };
+
+let lastPlayerChunk = null;
 
 const updateChunks = (playerPosition, seed) => {
     const playerChunk = {
@@ -701,6 +837,15 @@ const updateChunks = (playerPosition, seed) => {
         y: Math.floor(playerPosition.y / chunkSize),
         z: Math.floor(playerPosition.z / chunkSize),
     };
+
+    // Only update if the player moved to a new chunk
+    if (lastPlayerChunk &&
+        lastPlayerChunk.x === playerChunk.x &&
+        lastPlayerChunk.y === playerChunk.y &&
+        lastPlayerChunk.z === playerChunk.z) {
+        return;
+    }
+    lastPlayerChunk = playerChunk;
 
     const chunksToLoad = [];
     const chunksToUnload = new Set(loadedChunkSet);
@@ -726,26 +871,70 @@ const updateChunks = (playerPosition, seed) => {
     }
 };
 
+const dirtyChunks = new Set();
+
+function markNeighborsDirty(chunkKey) {
+    const [chunkX, chunkY, chunkZ] = chunkKey.split(',').map(Number);
+    const neighborKeys = [
+        `${chunkX + 1},${chunkY},${chunkZ}`,
+        `${chunkX - 1},${chunkY},${chunkZ}`,
+        `${chunkX},${chunkY + 1},${chunkZ}`,
+        `${chunkX},${chunkY - 1},${chunkZ}`,
+        `${chunkX},${chunkY},${chunkZ + 1}`,
+        `${chunkX},${chunkY},${chunkZ - 1}`
+    ];
+    neighborKeys.forEach(key => {
+        if (chunks[key]) dirtyChunks.add(key);
+    });
+}
+
+function processDirtyChunks() {
+    dirtyChunks.forEach(key => {
+        // Re‐generate the mesh for the dirty chunk.
+        generateChunkMesh({ [key]: chunks[key] });
+    });
+    dirtyChunks.clear();
+}
+
+// For example, every 200ms:
+setInterval(processDirtyChunks, 200);
 
 /**
  * Animation Loop
  */
 //Current Time
 let time = Date.now()
-
-//animation
 const playerPosition = { x: 0, y: 0, z: 0 }; // Update this based on player movement
-const seed = 12345; // Fixed seed for deterministic generation
+let lastUpdateTime = 0;
+const updateInterval = 100; // Update every 100ms
+
+let paused = false;
+onkeydown = (e) => {
+    if (e.key === "p") {
+        paused = !paused;
+        document.exitPointerLock();
+    }
+};
+
+const updateChunksThrottled = (playerPosition, seed) => {
+    const currentTime = Date.now();
+    if (currentTime - lastUpdateTime < updateInterval) return;
+    lastUpdateTime = currentTime;
+
+    updateChunks(camera.position, seed);
+};
 
 const tick = () => {
     window.requestAnimationFrame(tick);
+
+    if (paused) return;
 
     const currentTime = Date.now();
     const deltaTime = currentTime - time;
     time = currentTime;
 
     // Update player position and load/unload chunks
-    updateChunks(playerPosition, seed);
+    updateChunksThrottled(playerPosition, seed);
 
     controls.update(deltaTime);
     sendPlayerData(sock);

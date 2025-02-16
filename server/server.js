@@ -2,13 +2,22 @@ const { createServer } = require("http");
 const express = require('express')
 const { Server } = require("socket.io");
 const fs = require('fs')
+const mime = require('mime');
 var { readUInt4, writeUint4 } = require('uint4');
 
 $env:NODE_OPTIONS="--max-old-space-size=8192" 
 
 const app = express();
 
-app.use(express.static(`${__dirname}/../client`))
+app.use(express.static(`${__dirname}/../client`));
+
+
+app.get('/', (req, res) => {
+    res.sendFile(`${__dirname}/../client/index.html`);
+});
+
+app.get('/favicon.ico', (req, res) => res.status(204));
+
 
 const server = createServer(app)
 const io = new Server(server, { /* options */ });
@@ -34,7 +43,7 @@ initServer()
 io.on('connection', (sock) => {
     sock.emit('message', 'you are connected')
     sock.emit('worldSeed', worldSeed)
-    sock.emit('receiveWorldData', chunkChanges)
+    sock.emit('receiveChunkChanges', chunkChanges)
     sock.emit('receivePlayerData', players)
 
 
@@ -52,12 +61,11 @@ io.on('connection', (sock) => {
     })
 
 
-    //Updates world data when it is received and sends it to all players
-    sock.on('worldData', (worldUpdate) => {
+    //Updates the blockUpdate list when a blockUpdate is received and then sends the blockUpdate to all players
+    sock.on('blockUpdate', (blockUpdate) => {
 
-        updateWorld(worldUpdate)
-        io.emit('receiveWorldData', worldUpdate)
-        console.log(chunkChanges)
+        updateBlock(blockUpdate)
+        io.emit('receiveBlockUpdate', blockUpdate)
     })
 
     //Handles player disconnects
@@ -88,6 +96,7 @@ const updatePlayers = (playerUpdate) => {
     Object.assign(players, playerUpdate)
 }
 
-const updateWorld = (worldUpdate) => {
-    console.log(worldUpdate)
+const updateBlock = (blockUpdate) => {
+    console.log(blockUpdate)
+    console.log(chunkChanges)
 }
