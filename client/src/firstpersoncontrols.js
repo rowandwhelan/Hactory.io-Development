@@ -27,6 +27,7 @@ class FirstPersonControls extends THREE.EventDispatcher {
         this.moveRight = false
         this.moveUp = false
         this.moveDown = false
+        this.sprinting = false
 
         this.canJump = false
 
@@ -105,28 +106,28 @@ class FirstPersonControls extends THREE.EventDispatcher {
 
     onKeyDown = (event) => {
         event.preventDefault()
-        switch (event.code) {
-            case 'KeyW':
+        switch (event.key) {
+            case 'w':
             case 'ArrowUp':
                 this.moveForward = true
                 break
 
-            case 'KeyA':
+            case 'a':
             case 'ArrowLeft':
                 this.moveLeft = true
                 break
 
-            case 'KeyS':
+            case 's':
             case 'ArrowDown':
                 this.moveBackward = true
                 break
 
-            case 'KeyD':
+            case 'd':
             case 'ArrowRight':
                 this.moveRight = true
                 break
 
-            case 'Space':
+            case ' ':
                 if (this.spectator){
                     this.moveUp = true
                 }
@@ -135,43 +136,51 @@ class FirstPersonControls extends THREE.EventDispatcher {
                 }
                 this.canJump = false
                 break
-            case 'ShiftLeft':
+            case 'Shift':
                 if (this.spectator){
                     this.moveDown = true
                 }
+            case 'f':
+            if (this.spectator){
+                this.sprinting = true
+            }
         }
     }
 
     onKeyUp = (event) => {
-        switch (event.code) {
-            case 'KeyW':
+        switch (event.key) {
+            case 'w':
             case 'ArrowUp':
                 this.moveForward = false
                 break
 
-            case 'KeyA':
+            case 'a':
             case 'ArrowLeft':
                 this.moveLeft = false
                 break
 
-            case 'KeyS':
+            case 's':
             case 'ArrowDown':
                 this.moveBackward = false
                 break
 
-            case 'KeyD':
+            case 'd':
             case 'ArrowRight':
                 this.moveRight = false
                 break
-            case 'Space':
+            case ' ':
                 if (this.spectator){
                     this.moveUp = false
                 }
                 break
-            case 'ShiftLeft':
+            case 'Shift':
                 if (this.spectator){
                     this.moveDown = false
                 }
+            case 'f':
+            if (this.spectator){
+                this.sprinting = false
+            }
         }
     }
 
@@ -223,6 +232,10 @@ class FirstPersonControls extends THREE.EventDispatcher {
             this.inputVelocity.y = -this.velocityFactor * delta
         }
 
+        if (this.sprinting) {
+            this.inputVelocity.addVectors(this.inputVelocity, this.inputVelocity.multiplyScalar(5))
+        }
+
         // Convert velocity to world coordinates
         let camEuler = new THREE.Euler().copy(this.cameraEuler)
         //console.log(this.cameraEuler)
@@ -232,7 +245,8 @@ class FirstPersonControls extends THREE.EventDispatcher {
         //console.log(this.quaternion)
         this.inputVelocity.applyQuaternion(this.quaternion)
         //console.log(this.inputVelocity)
-        // Add to the object
+        // Add to the object     
+        
         this.velocity.x += this.inputVelocity.x
         this.velocity.z += this.inputVelocity.z
         this.velocity.y += this.inputVelocity.y
@@ -247,6 +261,8 @@ class FirstPersonControls extends THREE.EventDispatcher {
         if ((this.velocity.y < this.velocityCutoff) && (this.velocity.y > -this.velocityCutoff)) {
             this.velocity.y = 0
         }
+
+
 
         this.camera.position.x += this.velocity.x
         this.camera.position.z += this.velocity.z
