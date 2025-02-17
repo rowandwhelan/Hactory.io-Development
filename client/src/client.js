@@ -222,7 +222,7 @@ function getFaceUVs(blockTypes, atlasSize, blockType, face) {
  * Add buffergeometry to scene
  * Update it only when needed
  * 
- * Known issues:
+ * Prob fixed issues:
  * chunks generate their entire face on their borders unless there is air on that border
  * to be more specific, the chunk nextdoor generates an outward faces on its border, regardless of whether there is a block obstructing it in its neighbor
  */
@@ -305,55 +305,24 @@ function getVoxelAtGlobal(x, y, z, seed) {
     return (h % (blockTypes - 1)) + 1;
 }
 
-const isVoxelAt = (x, y, z, currentChunkView, filledChunk) => {
-    // Get chunk and local coordinates
-    const coords = getChunkCoords(x, y, z);
-
-    // If the voxel is within the current chunk
-    if (coords.chunkX === 0 && coords.chunkY === 0 && coords.chunkZ === 0) {
-        if (x >= 0 && x < chunkSize && y >= 0 && y < chunkSize && z >= 0 && z < chunkSize) {
-            const index = (z * chunkSize * chunkSize) + (y * chunkSize) + x;
-            return currentChunkView.getUint8(index) !== 0;
-        }
-        return false; // Out of bounds within the current chunk
-    }
-
-    // Check neighboring chunk
-    const neighborChunkKey = `${coords.chunkX},${coords.chunkY},${coords.chunkZ}`;
-    const neighborChunk = filledChunk[neighborChunkKey];
-
-    if (neighborChunk) {
-        const neighborView = new DataView(neighborChunk);
-        const index = (coords.localZ * chunkSize * chunkSize) +
-            (coords.localY * chunkSize) +
-            coords.localX;
-        return neighborView.getUint8(index) !== 0;
-    }
-
-    // If the neighboring chunk doesn't exist, assume no voxel
-    return false;
-};
-
 //Recieves global coordinates and returns whether or not there is a voxel at that location
 function isVoxelAtGlobal(x, y, z) {
     const { chunkX, chunkY, chunkZ, localX, localY, localZ } = getChunkCoords(x, y, z);
     const chunkKey = `${chunkX},${chunkY},${chunkZ}`;
-    if (chunks[chunkKey]) {
-        const chunkView = new DataView(chunks[chunkKey]);
-        //console.log(chunkView, x, y, z)
-        const index = (localZ * chunkSize * chunkSize) + (localY * chunkSize) + localX;
-        return chunkView.getUint8(index) !== 0;
-    }
+    
+    if (!chunks[chunkKey]) return false; // If chunk is missing, assume air
 
-    //console.log(`Suspicious voxel at x=${x}, y=${y}, z=${z}`, chunkKey);
-    return false;
+    const chunkView = new DataView(chunks[chunkKey]);
+    const index = (localZ * chunkSize * chunkSize) + (localY * chunkSize) + localX;
+    
+    return chunkView.getUint8(index) !== 0;
 }
 
 // Generate a chunk of voxel data based on global coordinates.
 // Recieves a filledChunk object containing: Object { "x,y,z": ArrayBuffer { ... } }
 const generateChunkMesh = (filledChunk) => {
     for (const chunk in filledChunk) {
-        // Remove any existing mesh for this chunk.
+        // Remove old chunk mesh
         const oldMesh = scene.getObjectByName(chunk);
         if (oldMesh) {
             scene.remove(oldMesh);
@@ -361,145 +330,118 @@ const generateChunkMesh = (filledChunk) => {
 
         const chunkView = new DataView(filledChunk[chunk]);
         const chunkGeometry = new THREE.BufferGeometry();
-        let vertices = [];
-        let colors = [];
-        let uvs = [];
-
-        // Get current chunk coordinates from the chunk key string ("x,y,z")
+        
+        // Get chunk world position
         const [chunkX, chunkY, chunkZ] = chunk.split(',').map(Number);
         const chunkWorldX = chunkX * chunkSize;
         const chunkWorldY = chunkY * chunkSize;
         const chunkWorldZ = chunkZ * chunkSize;
 
-        console.groupCollapsed(chunk, "Grouped logs");
+        //console.groupCollapsed(chunk, "Generating Chunk Mesh");
 
-        // Loop through every voxel in the chunk.
-        // Terrible for performance, must be optimized.
+        const maxFaces = chunkSize * chunkSize * chunkSize * 6;
+        const vertexArray = new Float32Array(maxFaces * 18);
+        const uvArray = new Float32Array(maxFaces * 12);
+        let vertexIndex = 0;
+        let uvIndex = 0;
+
+        const isSolid = new Uint8Array(chunkSize * chunkSize * chunkSize);
+
+        for (let z = 0; z < chunkSize; z++) {
+            for (let y = 0; y < chunkSize; y++) {
+                for (let x = 0; x < chunkSize; x++) {
+                    const index = (z * chunkSize * chunkSize) + (y * chunkSize) + x;
+                    isSolid[index] = chunkView.getUint8(index) !== 0;
+                }
+            }
+        }
+
         for (let z = 0; z < chunkSize; z++) {
             for (let y = 0; y < chunkSize; y++) {
                 for (let x = 0; x < chunkSize; x++) {
                     const index = (z * chunkSize * chunkSize) + (y * chunkSize) + x;
                     const voxel = chunkView.getUint8(index);
+                    if (voxel === 0) continue; // Skip air blocks
 
-                    if (voxel === 0) continue;
-
-                    // Generate random color (for debugging/visualization)
-                    const r = Math.random();
-                    const g = Math.random();
-                    const b = Math.random();
-
-                    // Calculate world coordinates for this voxel.
                     const worldX = chunkWorldX + x;
                     const worldY = chunkWorldY + y;
                     const worldZ = chunkWorldZ + z;
 
-                    // Check neighbors using global coordinates.
-                    // For each face, if there is no adjacent voxel, add the face's vertices.
+                    const neighbors = [
+                        { dx: 1, dy: 0, dz: 0, face: "right", offset: index + 1, chunkOffset: [1, 0, 0] },
+                        { dx: -1, dy: 0, dz: 0, face: "left", offset: index - 1, chunkOffset: [-1, 0, 0] },
+                        { dx: 0, dy: 1, dz: 0, face: "top", offset: index + chunkSize, chunkOffset: [0, 1, 0] },
+                        { dx: 0, dy: -1, dz: 0, face: "bottom", offset: index - chunkSize, chunkOffset: [0, -1, 0] },
+                        { dx: 0, dy: 0, dz: 1, face: "back", offset: index + chunkSize * chunkSize, chunkOffset: [0, 0, 1] },
+                        { dx: 0, dy: 0, dz: -1, face: "front", offset: index - chunkSize * chunkSize, chunkOffset: [0, 0, -1] }
+                    ];
 
-                    // Right face (positive X)
-                    if (!isVoxelAtGlobal(worldX + 1, worldY, worldZ)) {
-                        vertices.push(
-                            1 + x, y, z,
-                            1 + x, 1 + y, z,
-                            1 + x, 1 + y, 1 + z,
-                            1 + x, 1 + y, 1 + z,
-                            1 + x, y, 1 + z,
-                            1 + x, y, z
-                        );
-                        //for (let i = 0; i < 6; i++) colors.push(r, g, b);
-                        uvs.push(...getFaceUVs(blockTypes, atlasSize, voxel, "right"));
-                    }
+                    for (const { dx, dy, dz, face, offset, chunkOffset } of neighbors) {
+                        const [cx, cy, cz] = chunkOffset;
 
-                    // Left face (negative X)
-                    if (!isVoxelAtGlobal(worldX - 1, worldY, worldZ)) {
-                        vertices.push(
-                            x, y, 1 + z,
-                            x, 1 + y, 1 + z,
-                            x, 1 + y, z,
-                            x, 1 + y, z,
-                            x, y, z,
-                            x, y, 1 + z
-                        );
-                        //for (let i = 0; i < 6; i++) colors.push(r, g, b);
-                        uvs.push(...getFaceUVs(blockTypes, atlasSize, voxel, "left"));
-                    }
+                        // Check if within chunk bounds
+                        if (
+                            x + dx >= 0 && x + dx < chunkSize &&
+                            y + dy >= 0 && y + dy < chunkSize &&
+                            z + dz >= 0 && z + dz < chunkSize
+                        ) {
+                            if (isSolid[offset]) continue; // Skip face if adjacent block exists
+                        } 
+                        // Check neighbor chunk for adjacent block
+                        else {
+                            const neighborChunkX = chunkX + cx;
+                            const neighborChunkY = chunkY + cy;
+                            const neighborChunkZ = chunkZ + cz;
+                            
+                            if (isNeighborLoaded(neighborChunkX, neighborChunkY, neighborChunkZ)) continue;
+                        }
 
-                    // Top face (positive Y)
-                    if (!isVoxelAtGlobal(worldX, worldY + 1, worldZ)) {
-                        vertices.push(
-                            1 + x, 1 + y, z,
-                            x, 1 + y, z,
-                            x, 1 + y, 1 + z,
-                            x, 1 + y, 1 + z,
-                            1 + x, 1 + y, 1 + z,
-                            1 + x, 1 + y, z
-                        );
-                        //for (let i = 0; i < 6; i++) colors.push(r, g, b);
-                        uvs.push(...getFaceUVs(blockTypes, atlasSize, voxel, "top"));
-                    }
+                        // Add face vertices
+                        const faceVertices = getFaceVertices(x, y, z, face);
+                        vertexArray.set(faceVertices, vertexIndex);
+                        vertexIndex += faceVertices.length;
 
-                    // Bottom face (negative Y)
-                    if (!isVoxelAtGlobal(worldX, worldY - 1, worldZ)) {
-                        vertices.push(
-                            x, y, z,
-                            1 + x, y, z,
-                            1 + x, y, 1 + z,
-                            1 + x, y, 1 + z,
-                            x, y, 1 + z,
-                            x, y, z
-                        );
-                        //for (let i = 0; i < 6; i++) colors.push(r, g, b);
-                        uvs.push(...getFaceUVs(blockTypes, atlasSize, voxel, "bottom"));
-                    }
-
-                    // Front face (negative Z)
-                    if (!isVoxelAtGlobal(worldX, worldY, worldZ - 1)) {
-                        vertices.push(
-                            1 + x, y, z,
-                            x, y, z,
-                            x, 1 + y, z,
-                            x, 1 + y, z,
-                            1 + x, 1 + y, z,
-                            1 + x, y, z
-                        );
-                        //for (let i = 0; i < 6; i++) colors.push(r, g, b);
-                        uvs.push(...getFaceUVs(blockTypes, atlasSize, voxel, "front"));
-                    }
-
-                    // Back face (positive Z)
-                    if (!isVoxelAtGlobal(worldX, worldY, worldZ + 1)) {
-                        vertices.push(
-                            x, y, 1 + z,
-                            1 + x, y, 1 + z,
-                            1 + x, 1 + y, 1 + z,
-                            1 + x, 1 + y, 1 + z,
-                            x, 1 + y, 1 + z,
-                            x, y, 1 + z
-                        );
-                        //for (let i = 0; i < 6; i++) colors.push(r, g, b);
-                        uvs.push(...getFaceUVs(blockTypes, atlasSize, voxel, "back"));
+                        // Add UVs
+                        const faceUVs = getFaceUVs(blockTypes, atlasSize, voxel, face);
+                        uvArray.set(faceUVs, uvIndex);
+                        uvIndex += faceUVs.length;
                     }
                 }
             }
         }
 
-        console.groupEnd();
+        //console.groupEnd();
+
+        const finalVertices = vertexArray.slice(0, vertexIndex);
+        const finalUVs = uvArray.slice(0, uvIndex);
 
         // Build the geometry
-        const vertexArray = new Float32Array(vertices);
-        const colorArray = new Float32Array(colors);
-        const uvArray = new Float32Array(uvs);
-        chunkGeometry.setAttribute('position', new THREE.BufferAttribute(vertexArray, 3));
-        chunkGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
-        chunkGeometry.setAttribute('uv', new THREE.BufferAttribute(uvArray, 2));
+        chunkGeometry.setAttribute('position', new THREE.BufferAttribute(finalVertices, 3));
+        chunkGeometry.setAttribute('uv', new THREE.BufferAttribute(finalUVs, 2));
 
         // Create the mesh
         const chunkMesh = new THREE.Mesh(chunkGeometry, chunkMaterial);
         chunkMesh.position.set(chunkWorldX, chunkWorldY, chunkWorldZ);
-        // Set the mesh name to the chunk key for easy lookup later.
         chunkMesh.name = chunk;
         scene.add(chunkMesh);
     }
+};
+
+const isNeighborLoaded = (chunkX, chunkY, chunkZ) => {
+    return chunks[`${chunkX},${chunkY},${chunkZ}`] !== undefined;
+};
+
+// Helper function to generate cube face vertices
+const getFaceVertices = (x, y, z, face) => {
+    const faceVertices = {
+        right: [1 + x, y, z, 1 + x, 1 + y, z, 1 + x, 1 + y, 1 + z, 1 + x, 1 + y, 1 + z, 1 + x, y, 1 + z, 1 + x, y, z],
+        left: [x, y, 1 + z, x, 1 + y, 1 + z, x, 1 + y, z, x, 1 + y, z, x, y, z, x, y, 1 + z],
+        top: [1 + x, 1 + y, z, x, 1 + y, z, x, 1 + y, 1 + z, x, 1 + y, 1 + z, 1 + x, 1 + y, 1 + z, 1 + x, 1 + y, z],
+        bottom: [x, y, z, 1 + x, y, z, 1 + x, y, 1 + z, 1 + x, y, 1 + z, x, y, 1 + z, x, y, z],
+        front: [1 + x, y, z, x, y, z, x, 1 + y, z, x, 1 + y, z, 1 + x, 1 + y, z, 1 + x, y, z],
+        back: [x, y, 1 + z, 1 + x, y, 1 + z, 1 + x, 1 + y, 1 + z, 1 + x, 1 + y, 1 + z, x, 1 + y, 1 + z, x, y, 1 + z]
+    };
+    return new Float32Array(faceVertices[face]);
 };
 
 const generateChunkData = (chunkKey, seed) => {
@@ -549,7 +491,6 @@ function updateNeighboringChunks(chunkKey) {
     });
 }
 
-
 const log = (text) => {
     const parent = document.querySelector('#events')
     const el = document.createElement('li')
@@ -584,7 +525,6 @@ const sendBlockUpdate = (blockUpdate) => {
     sock.emit('blockUpdate', (blockUpdate))
 }
 
-
 document.addEventListener('mousemove', onMouseMove)
 document.addEventListener('mousedown', onMouseDown)
 
@@ -599,7 +539,7 @@ const mouse = new THREE.Vector2(0, 0)
 
 function onMouseMove(event) {
 
-    raycaster.setFromCamera(mouse, camera)
+    //raycaster.setFromCamera(mouse, camera)
 
     // //the line below tanks the fps for some reason lol
     // const intersects = raycaster.intersectObjects(scene.children, false)
@@ -614,6 +554,8 @@ function onMouseMove(event) {
 }
 
 function onMouseDown(event) {
+    //temporarily disabled
+    return
 
     raycaster.setFromCamera(mouse, camera)
     const intersects = raycaster.intersectObjects(scene.children, true)
@@ -674,7 +616,6 @@ function onMouseDown(event) {
             console.log('added')
             console.log(intersect)
         }
-
     }
 }
 
@@ -736,7 +677,7 @@ worker.onmessage = (e) => {
         generateChunkMesh({ [chunkKey]: chunkData });
         // Update neighbors (you may debounce this call to reduce lag)
         //scheduleNeighborUpdate(chunkKey);
-        updateNeighborChunks(chunkKey);
+        updateNeighboringChunks(chunkKey);
     } else if (action === "error") {
         console.error(`Error in worker: ${error}`);
     }
