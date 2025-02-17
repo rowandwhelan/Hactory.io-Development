@@ -345,7 +345,7 @@ function isVoxelAtGlobal(x, y, z) {
         return chunkView.getUint8(index) !== 0;
     }
 
-    console.log(`Suspicious voxel at x=${x}, y=${y}, z=${z}`, chunkKey);
+    //console.log(`Suspicious voxel at x=${x}, y=${y}, z=${z}`, chunkKey);
     return false;
 }
 
@@ -371,7 +371,7 @@ const generateChunkMesh = (filledChunk) => {
         const chunkWorldY = chunkY * chunkSize;
         const chunkWorldZ = chunkZ * chunkSize;
 
-        console.groupCollapsed("Suspicious Voxels Check", chunk);
+        console.groupCollapsed(chunk, "Grouped logs");
 
         // Loop through every voxel in the chunk.
         // Terrible for performance, must be optimized.
@@ -580,7 +580,7 @@ const sendPlayerData = (sock) => {
 }
 
 const sendBlockUpdate = (blockUpdate) => {
-    console.log('blockUpdate', blockUpdate)
+    //console.log('blockUpdate', blockUpdate)
     sock.emit('blockUpdate', (blockUpdate))
 }
 
@@ -751,25 +751,6 @@ function scheduleNeighborUpdate(chunkKey) {
     }, 50); // Adjust delay as needed
 }
 
-
-const updateNeighborChunks = (chunkKey) => {
-    const [chunkX, chunkY, chunkZ] = chunkKey.split(',').map(Number);
-    const neighborKeys = [
-        `${chunkX + 1},${chunkY},${chunkZ}`,
-        `${chunkX - 1},${chunkY},${chunkZ}`,
-        `${chunkX},${chunkY + 1},${chunkZ}`,
-        `${chunkX},${chunkY - 1},${chunkZ}`,
-        `${chunkX},${chunkY},${chunkZ + 1}`,
-        `${chunkX},${chunkY},${chunkZ - 1}`
-    ];
-
-    neighborKeys.forEach(key => {
-        if (chunks[key]) {
-            generateChunkMesh({ [key]: chunks[key] });
-        }
-    });
-};
-
 const loadWorld = (chunkKey, seed) => {
     if (loadedChunkSet.has(chunkKey)) return;
     worker.postMessage({
@@ -801,6 +782,7 @@ const updateNeighbors = (chunkKey) => {
     });
 };
 
+//Not fully implemented??
 const updateChunkBorder = (chunkKey, face) => {
     const chunkData = chunks[chunkKey];
     if (!chunkData) return;
