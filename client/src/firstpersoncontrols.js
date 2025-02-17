@@ -211,6 +211,12 @@ class FirstPersonControls extends THREE.EventDispatcher {
 
         this.inputVelocity.set(0, 0, 0)
 
+        if (this.sprinting) {
+            this.velocityFactor = 0.001
+        } else {
+            this.velocityFactor = 0.0005
+        }
+
         if (this.moveForward) {
             this.inputVelocity.z = -this.velocityFactor * delta
         }
@@ -232,9 +238,7 @@ class FirstPersonControls extends THREE.EventDispatcher {
             this.inputVelocity.y = -this.velocityFactor * delta
         }
 
-        if (this.sprinting) {
-            this.inputVelocity.addVectors(this.inputVelocity, this.inputVelocity.multiplyScalar(5))
-        }
+
 
         // Convert velocity to world coordinates
         let camEuler = new THREE.Euler().copy(this.cameraEuler)
