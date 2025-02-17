@@ -322,31 +322,28 @@ function isVoxelAtGlobal(x, y, z) {
 // Recieves a filledChunk object containing: Object { "x,y,z": ArrayBuffer { ... } }
 const generateChunkMesh = (filledChunk) => {
     for (const chunk in filledChunk) {
-        // Remove old chunk mesh
+        // Remove old mesh
         const oldMesh = scene.getObjectByName(chunk);
         if (oldMesh) {
             scene.remove(oldMesh);
         }
 
+        // Prepare geometry & arrays
         const chunkView = new DataView(filledChunk[chunk]);
         const chunkGeometry = new THREE.BufferGeometry();
-        
-        // Get chunk world position
         const [chunkX, chunkY, chunkZ] = chunk.split(',').map(Number);
         const chunkWorldX = chunkX * chunkSize;
         const chunkWorldY = chunkY * chunkSize;
         const chunkWorldZ = chunkZ * chunkSize;
 
-        //console.groupCollapsed(chunk, "Generating Chunk Mesh");
-
-        const maxFaces = chunkSize * chunkSize * chunkSize * 6;
-        const vertexArray = new Float32Array(maxFaces * 18);
-        const uvArray = new Float32Array(maxFaces * 12);
+        const maxFaces = chunkSize * chunkSize * chunkSize * 6; 
+        const vertexArray = new Float32Array(maxFaces * 18); // 6 verts * 3 coords
+        const uvArray = new Float32Array(maxFaces * 12);     // 6 verts * 2 coords
         let vertexIndex = 0;
         let uvIndex = 0;
 
+        // Local map of which voxels are solid
         const isSolid = new Uint8Array(chunkSize * chunkSize * chunkSize);
-
         for (let z = 0; z < chunkSize; z++) {
             for (let y = 0; y < chunkSize; y++) {
                 for (let x = 0; x < chunkSize; x++) {
@@ -356,52 +353,54 @@ const generateChunkMesh = (filledChunk) => {
             }
         }
 
+        // Build faces only where needed
         for (let z = 0; z < chunkSize; z++) {
             for (let y = 0; y < chunkSize; y++) {
                 for (let x = 0; x < chunkSize; x++) {
                     const index = (z * chunkSize * chunkSize) + (y * chunkSize) + x;
                     const voxel = chunkView.getUint8(index);
-                    if (voxel === 0) continue; // Skip air blocks
-
-                    const worldX = chunkWorldX + x;
-                    const worldY = chunkWorldY + y;
-                    const worldZ = chunkWorldZ + z;
+                    if (voxel === 0) continue; // Skip air
 
                     const neighbors = [
-                        { dx: 1, dy: 0, dz: 0, face: "right", offset: index + 1, chunkOffset: [1, 0, 0] },
-                        { dx: -1, dy: 0, dz: 0, face: "left", offset: index - 1, chunkOffset: [-1, 0, 0] },
-                        { dx: 0, dy: 1, dz: 0, face: "top", offset: index + chunkSize, chunkOffset: [0, 1, 0] },
-                        { dx: 0, dy: -1, dz: 0, face: "bottom", offset: index - chunkSize, chunkOffset: [0, -1, 0] },
-                        { dx: 0, dy: 0, dz: 1, face: "back", offset: index + chunkSize * chunkSize, chunkOffset: [0, 0, 1] },
-                        { dx: 0, dy: 0, dz: -1, face: "front", offset: index - chunkSize * chunkSize, chunkOffset: [0, 0, -1] }
+                        { face: "right",  dx: 1,  dy: 0,  dz: 0 },
+                        { face: "left",   dx: -1, dy: 0,  dz: 0 },
+                        { face: "top",    dx: 0,  dy: 1,  dz: 0 },
+                        { face: "bottom", dx: 0,  dy: -1, dz: 0 },
+                        { face: "back",   dx: 0,  dy: 0,  dz: 1 },
+                        { face: "front",  dx: 0,  dy: 0,  dz: -1 }
                     ];
 
-                    for (const { dx, dy, dz, face, offset, chunkOffset } of neighbors) {
-                        const [cx, cy, cz] = chunkOffset;
+                    for (const { face, dx, dy, dz } of neighbors) {
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        const nz = z + dz;
 
-                        // Check if within chunk bounds
-                        if (
-                            x + dx >= 0 && x + dx < chunkSize &&
-                            y + dy >= 0 && y + dy < chunkSize &&
-                            z + dz >= 0 && z + dz < chunkSize
-                        ) {
-                            if (isSolid[offset]) continue; // Skip face if adjacent block exists
+                        // Check if neighbor is inside the same chunk
+                        if (nx >= 0 && nx < chunkSize &&
+                            ny >= 0 && ny < chunkSize &&
+                            nz >= 0 && nz < chunkSize) 
+                        {
+                            // Already know if it's solid locally
+                            const neighborIndex = (nz * chunkSize * chunkSize) + (ny * chunkSize) + nx;
+                            if (isSolid[neighborIndex]) continue; // neighbor is filled
                         } 
-                        // Check neighbor chunk for adjacent block
                         else {
-                            const neighborChunkX = chunkX + cx;
-                            const neighborChunkY = chunkY + cy;
-                            const neighborChunkZ = chunkZ + cz;
-                            
-                            if (isNeighborLoaded(neighborChunkX, neighborChunkY, neighborChunkZ)) continue;
+                            // It's outside this chunk, so check the actual neighbor's voxel
+                            const globalX = chunkWorldX + x + dx;
+                            const globalY = chunkWorldY + y + dy;
+                            const globalZ = chunkWorldZ + z + dz;
+
+                            if (isVoxelAtGlobal(globalX, globalY, globalZ)) {
+                                // There's a block in the neighbor chunk at that position
+                                continue; 
+                            }
                         }
 
-                        // Add face vertices
+                        // If we got here => neighbor is air => add face
                         const faceVertices = getFaceVertices(x, y, z, face);
                         vertexArray.set(faceVertices, vertexIndex);
                         vertexIndex += faceVertices.length;
 
-                        // Add UVs
                         const faceUVs = getFaceUVs(blockTypes, atlasSize, voxel, face);
                         uvArray.set(faceUVs, uvIndex);
                         uvIndex += faceUVs.length;
@@ -410,22 +409,21 @@ const generateChunkMesh = (filledChunk) => {
             }
         }
 
-        //console.groupEnd();
-
+        // Create final typed arrays
         const finalVertices = vertexArray.slice(0, vertexIndex);
         const finalUVs = uvArray.slice(0, uvIndex);
 
-        // Build the geometry
         chunkGeometry.setAttribute('position', new THREE.BufferAttribute(finalVertices, 3));
         chunkGeometry.setAttribute('uv', new THREE.BufferAttribute(finalUVs, 2));
 
-        // Create the mesh
+        // Make the mesh
         const chunkMesh = new THREE.Mesh(chunkGeometry, chunkMaterial);
         chunkMesh.position.set(chunkWorldX, chunkWorldY, chunkWorldZ);
         chunkMesh.name = chunk;
         scene.add(chunkMesh);
     }
 };
+
 
 const isNeighborLoaded = (chunkX, chunkY, chunkZ) => {
     return chunks[`${chunkX},${chunkY},${chunkZ}`] !== undefined;
