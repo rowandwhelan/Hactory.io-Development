@@ -334,14 +334,18 @@ const isVoxelAt = (x, y, z, currentChunkView, filledChunk) => {
     return false;
 };
 
+//Recieves global coordinates and returns whether or not there is a voxel at that location
 function isVoxelAtGlobal(x, y, z) {
     const { chunkX, chunkY, chunkZ, localX, localY, localZ } = getChunkCoords(x, y, z);
     const chunkKey = `${chunkX},${chunkY},${chunkZ}`;
     if (chunks[chunkKey]) {
         const chunkView = new DataView(chunks[chunkKey]);
+        //console.log(chunkView, x, y, z)
         const index = (localZ * chunkSize * chunkSize) + (localY * chunkSize) + localX;
         return chunkView.getUint8(index) !== 0;
     }
+
+    console.log(`Suspicious voxel at x=${x}, y=${y}, z=${z}`, chunkKey);
     return false;
 }
 
@@ -366,6 +370,8 @@ const generateChunkMesh = (filledChunk) => {
         const chunkWorldX = chunkX * chunkSize;
         const chunkWorldY = chunkY * chunkSize;
         const chunkWorldZ = chunkZ * chunkSize;
+
+        console.groupCollapsed("Suspicious Voxels Check", chunk);
 
         // Loop through every voxel in the chunk.
         // Terrible for performance, must be optimized.
@@ -476,6 +482,8 @@ const generateChunkMesh = (filledChunk) => {
                 }
             }
         }
+
+        console.groupEnd();
 
         // Build the geometry
         const vertexArray = new Float32Array(vertices);
