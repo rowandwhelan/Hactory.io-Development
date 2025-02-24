@@ -86,7 +86,7 @@ function getHeight(x, z, seed) {
     let height = 0;
 
     // Big broad hills
-    height += perlin2D(x, z, seed, 0.002) * 60;   // amplitude ~60 blocks
+    height += perlin2D(x, z, seed, 0.002) * 150;   // amplitude ~150 blocks
     // Mid-range detail
     height += perlin2D(x, z, seed + 1234, 0.01) * 16;
     // Fine detail
@@ -103,7 +103,7 @@ function isCave(x, y, z, seed) {
     const noiseVal = perlin3D(x, y, z, seed + 5555, 0.02);
     // If noiseVal is high => carve out air
     // tweak threshold to change frequency of caves
-    return noiseVal > 0.55;
+    return noiseVal > 0.1;
 }
 
 /** ===============================
@@ -122,6 +122,7 @@ function getOreType(x, y, z, seed) {
     if (val < 2) return 7;     // diamond
     if (val < 6) return 6;     // gold
     if (val < 25) return 5;    // iron
+    if (val < 40) return 0;    // air pocket
     if (val < 60) return 4;    // coal
     return 3; // default stone
 }

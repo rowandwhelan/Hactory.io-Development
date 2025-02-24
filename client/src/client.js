@@ -38,7 +38,7 @@ function initialize() {
     // Stats (FPS)
     const stats = new Stats();
     stats.domElement.style.position = 'absolute';
-    stats.domElement.style.top = '0px';
+    stats.domElement.style.top = '60px';
     document.getElementById('container').appendChild(stats.domElement);
 
     // Lighting
@@ -107,7 +107,7 @@ const seed = 12345; // Fixed seed for deterministic generation
 const chunkSize = 32
 const blockTypes = 400
 const atlasSize = 2
-let renderDistance = 2
+let renderDistance = 4
 
 /**
  * Players
@@ -158,6 +158,18 @@ const updatePlayers = (playerUpdate, add) => {
         console.error('updatePlayers() encountered an error')
     }
 }
+
+function updateDebugStats() {
+    const info = renderer.info;
+    document.getElementById("debug-stats").innerHTML = `
+        
+        <b>Draw Calls:</b> ${info.render.calls} <br>
+        <b>Vertices:</b> ${info.render.triangles} <br>
+        <b>Textures:</b> ${info.memory.textures} <br>
+    `;
+}
+setInterval(updateDebugStats, 500);
+
 
 /**
  * Calculate UV coordinates for a block face in a texture atlas.
